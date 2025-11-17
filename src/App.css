@@ -1,4 +1,3 @@
-/* App.css */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -15,17 +14,15 @@ body {
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* conteneur global */
 .app {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* TAP BAR en haut FIXE */
 .topbar {
-  height: 160px;                    /* ajustement de la largueur manuellement */
-  background: #6f5a72;             /* violet/gris */
+  height: 80px;
+  background: #6f5a72;
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -34,26 +31,36 @@ body {
   letter-spacing: 0.08em;
 }
 
-/* zone du dessous (nav + page) */
 .layout {
   flex: 1;
   display: flex;
+  min-height: 0;
 }
 
-/* colonne gauche : NAVIGATION FIXE RAPIDE */
 .sidebar {
-  width: 200px;                    /* ajustement de la largeur fixe de la nav */
-  background: #e7cfcf;             /* rose pâle */
+  background: #e7cfcf;
   padding: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* zone droite : PAGE */
+/* poignée */
+.sidebar-resizer {
+  width: 6px;
+  cursor: col-resize;
+  background: rgba(0, 0, 0, 0.05);
+  transition: background 0.15s ease;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer.is-resizing {
+  background: rgba(0, 0, 0, 0.18);
+}
+
 .page {
   flex: 1;
-  background: #e4b85a;             /* jaune/orangé */
+  background: #e4b85a;
   padding: 24px;
   display: flex;
   align-items: center;

@@ -1,24 +1,6 @@
-// App.jsx
 import './App.css'
+import AppLayout from './components/AppLayout'
 
 export default function App() {
-  return (
-    <div className="app">
-      {/* TAP BAR */}
-      <header className="topbar">
-        TAP BAR
-      </header>
-
-      {/* NAV + PAGE */}
-      <div className="layout">
-        <nav className="sidebar">
-          NAVIGATION
-        </nav>
-
-        <main className="page">
-          PAGE
-        </main>
-      </div>
-    </div>
-  )
+  return <AppLayout />
 }
