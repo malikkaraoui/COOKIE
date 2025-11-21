@@ -67,23 +67,36 @@ export async function getCachedPrice(coin) {
  * @returns {Promise<void>}
  */
 export async function setCachedPrice(coin, priceData) {
-  if (!coin || !priceData) return
+  if (!coin || !priceData) {
+    console.warn('❌ setCachedPrice: coin ou priceData manquant', { coin, priceData })
+    return
+  }
+
+  console.log(`💾 Tentative d'écriture cache ${coin}:`, {
+    price: priceData.price,
+    prevDayPx: priceData.prevDayPx,
+    deltaAbs: priceData.deltaAbs,
+    deltaPct: priceData.deltaPct
+  })
 
   try {
     const cacheRef = ref(db, `priceCache/${coin}`)
     
-    await set(cacheRef, {
+    const dataToCache = {
       price: priceData.price,
       prevDayPx: priceData.prevDayPx,
       deltaAbs: priceData.deltaAbs,
       deltaPct: priceData.deltaPct,
       timestamp: Date.now(),
       source: 'hyperliquid'
-    })
+    }
     
-    console.log(`✅ Prix ${coin} mis en cache:`, priceData.price)
+    await set(cacheRef, dataToCache)
+    
+    console.log(`✅ Prix ${coin} écrit dans le cache avec succès!`, dataToCache)
   } catch (error) {
-    console.error(`Erreur mise en cache ${coin}:`, error)
+    console.error(`❌ Erreur mise en cache ${coin}:`, error.code, error.message)
+    console.error('Détails:', error)
   }
 }
 

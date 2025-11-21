@@ -6,25 +6,35 @@ function fmtSignedAbs(n,d=0){ const s=n>=0?'':'-'; const a=Math.abs(n);
 export default function BtcTile({ price, deltaAbs, deltaPct, status, source, error }) {
   const hasDelta = deltaAbs!=null && deltaPct!=null;
   const color = !hasDelta ? '#94a3b8' : deltaAbs>=0 ? '#22c55e' : '#ef4444';
-  
-  // Indicateur de source
-  const statusText = error 
-    ? <span style={{color:'#ef4444'}}>{error}</span>
-    : status === 'live' 
-      ? '🟢 Live'
-      : status === 'cached'
-        ? '📦 Cache'
-        : 'Chargement…';
-  
+
+  // Statut lisible
+  let statusLabel = 'Chargement…'
+  if (error) statusLabel = 'Erreur'
+  else if (status === 'live') statusLabel = 'Live'
+  else if (status === 'cached') statusLabel = 'Cache'
+  else if (status === 'loading') statusLabel = 'Initialisation'
+
+  // Source (hyperliquid vs cache navigateur)
+  const sourceLabel = source === 'live' ? 'Hyperliquid' : 'Navigateur'
+
   return (
     <div style={styles.card}>
       <img src="/assets/btc.png" alt="BTC" width={36} height={36} style={{marginRight:10}} />
       <div style={{display:'flex',flexDirection:'column'}}>
-        <div style={{...styles.delta, color}}>
-          {hasDelta ? `(${fmtSignedAbs(deltaAbs,0)} / ${fmtSignedAbs(deltaPct,2)}%)` : '(calcul 24h…)'}
+        <div style={{...styles.delta, color, minHeight:16}}>
+          {hasDelta ? `(${fmtSignedAbs(deltaAbs,0)} / ${fmtSignedAbs(deltaPct,2)}%)` : 'Variation...'}
         </div>
         <div style={styles.price}>{price!=null ? fmtUSD(price) : '—'}</div>
-        <div style={styles.sub}>{statusText}</div>
+        <div style={styles.sub}>
+          {error && <span style={{color:'#ef4444'}}>⛔ {error}</span>}
+          {!error && (
+            <span>
+              <span style={{color: status==='live' ? '#22c55e' : '#94a3b8'}}>{statusLabel}</span>
+              {' • '}
+              <span style={{color:'#64748b'}}>{sourceLabel}</span>
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

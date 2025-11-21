@@ -9,7 +9,7 @@
     "priceCache": {
       "$coin": {
         ".read": true,
-        ".write": "auth != null"
+        ".write": true
       }
     }
   }
