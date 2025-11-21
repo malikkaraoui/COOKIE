@@ -1,13 +1,14 @@
 // Contexte global des données de marché (prix + variation 24h) avec cache navigateur
 // Responsable de :
-//  - Polling REST assetCtxs toutes les 5s (markPx + prevDayPx)
+//  - Connexion WebSocket unique (allMids)
+//  - Fetch initial meta (prevDayPx)
 //  - Calcul variation via priceCalculations
 //  - Persistance locale (localStorage) pour affichage instantané
 //  - Écriture dans Realtime Database (filet de sécurité) via priceCache.js
-//  - Fournir un accès uniformisé aux tokens (BTC pour l'instant, extensible)
+//  - Fournir un accès uniformisé aux tokens (BTC pour l’instant, extensible)
 
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { INFO_URL } from '../lib/hlEndpoints'
+import { WS_URL, INFO_URL } from '../lib/hlEndpoints'
 import { calculatePriceChange } from '../lib/priceCalculations'
 import { setCachedPrice } from '../lib/database/priceCache'
 
@@ -16,9 +17,15 @@ const MarketDataContext = createContext(null)
 // Clef localStorage pour le cache navigateur
 const LS_KEY = 'marketDataCache_v1'
 
+// Intervalle de rafraîchissement meta (ms)
+const META_REFRESH_MS = 5 * 60 * 1000 // 5 min
+
 export function MarketDataProvider({ children }) {
   const [tokens, setTokens] = useState({}) // { BTC: { price, prevDayPx, deltaAbs, deltaPct, status, source, updatedAt } }
+  const wsRef = useRef(null)
+  const metaTimerRef = useRef(null)
   const mountedRef = useRef(false)
+  const metaFetchedRef = useRef(false)
 
   // Hydratation initiale depuis localStorage (affichage instantané)
   useEffect(() => {
@@ -65,54 +72,81 @@ export function MarketDataProvider({ children }) {
     }
   }, [tokens])
 
-  // Polling assetCtxs toutes les 5s (prix + prevDayPx en une seule requête)
+  // Connexion WebSocket allMids (une seule pour toute l’app)
   useEffect(() => {
-    async function fetchAssetCtxs() {
+    const ws = new WebSocket(WS_URL)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({
+        method: 'subscribe',
+        subscription: { type: 'allMids' }
+      }))
+    }
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data)
+        if (msg?.channel === 'allMids' && msg?.data?.mids) {
+          const mids = msg.data.mids
+          // Pour l’instant : uniquement BTC (U prefix fallback)
+          const rawBtc = mids['BTC'] ?? mids['UBTC']
+          if (rawBtc != null) {
+            updateToken('BTC', { price: Number(rawBtc), source: 'live' })
+          }
+        }
+      } catch {
+        // Ignore messages non parsables
+      }
+    }
+
+    ws.onerror = () => {
+      updateToken('BTC', { status: 'error' })
+    }
+
+    ws.onclose = () => {
+      // Marquer source comme cache si on avait déjà un prix
+      updateToken('BTC', (prev) => (prev?.price ? { source: 'cache', status: 'closed' } : { status: 'closed' }))
+    }
+
+    return () => {
+      try { ws.close(1000, 'provider_unmount') } catch { /* Ignore */ }
+    }
+  }, [])
+
+  // Fetch meta (prevDayPx) initial + rafraîchissement périodique
+  useEffect(() => {
+    async function fetchMeta() {
       try {
         const res = await fetch(INFO_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'assetCtxs', coins: ['BTC'] })
+          body: JSON.stringify({ type: 'meta' })
         })
         if (!res.ok) throw new Error('HTTP ' + res.status)
         const data = await res.json()
-        
-        if (Array.isArray(data) && data[0]) {
-          const btcData = data[0]
-          const markPx = Number(btcData.markPx)
-          const prevDayPx = Number(btcData.prevDayPx)
-          
-          if (!isNaN(markPx) && !isNaN(prevDayPx) && prevDayPx > 0) {
-            console.log('✅ assetCtxs BTC:', { markPx, prevDayPx })
-            updateToken('BTC', { 
-              price: markPx, 
-              prevDayPx,
-              source: 'live',
-              status: 'live'
-            })
-          } else {
-            console.warn('⚠️ Données assetCtxs invalides:', btcData)
-            updateToken('BTC', { status: 'error', error: 'Données invalides' })
+        const universe = data?.[0]?.universe || []
+        const metaArr = data?.[1] || []
+        const btcIndex = universe.findIndex(c => c.name === 'BTC')
+        if (btcIndex !== -1 && metaArr[btcIndex]) {
+          const prevDayPx = Number(metaArr[btcIndex].prevDayPx)
+          if (!isNaN(prevDayPx)) {
+            updateToken('BTC', { prevDayPx })
           }
-        } else {
-          console.warn('⚠️ Format assetCtxs inattendu:', data)
-          updateToken('BTC', { status: 'error', error: 'Format inattendu' })
         }
       } catch (e) {
-        console.warn('❌ Erreur fetch assetCtxs:', e.message)
-        updateToken('BTC', { status: 'error', error: e.message })
+        console.warn('fetchMeta error:', e.message)
       }
     }
 
-    // Fetch initial
-    fetchAssetCtxs()
-
-    // Polling toutes les 5s
-    const pollTimer = setInterval(fetchAssetCtxs, 5000)
-
-    return () => {
-      clearInterval(pollTimer)
+    // Fetch initial (éviter double appel)
+    if (!metaFetchedRef.current) {
+      metaFetchedRef.current = true
+      fetchMeta()
     }
+    // Rafraîchissement périodique
+    metaTimerRef.current = setInterval(fetchMeta, META_REFRESH_MS)
+    return () => { clearInterval(metaTimerRef.current) }
   }, [])
 
   // Fonction utilitaire de mise à jour atomique
@@ -132,24 +166,14 @@ export function MarketDataProvider({ children }) {
       }
       merged.updatedAt = Date.now()
 
-      // Écriture Realtime DB (lecture publique via règles Firebase)
+      // Écriture Realtime DB (async, best effort) uniquement si source live
       if (merged.source === 'live' && merged.price != null && merged.prevDayPx != null) {
-        console.log('🔥 Tentative écriture Firebase BTC:', {
-          price: merged.price,
-          prevDayPx: merged.prevDayPx,
-          deltaAbs: merged.deltaAbs,
-          deltaPct: merged.deltaPct
-        })
         setCachedPrice(symbol, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,
           deltaAbs: merged.deltaAbs,
           deltaPct: merged.deltaPct
-        }).then(() => {
-          console.log('✅ Écriture Firebase réussie!')
-        }).catch((err) => {
-          console.error('❌ Échec écriture Firebase:', err.code, err.message)
-        })
+        }).catch(() => {})
       }
       return { ...prev, [symbol]: merged }
     })

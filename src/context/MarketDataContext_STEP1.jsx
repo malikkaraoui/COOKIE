@@ -132,24 +132,14 @@ export function MarketDataProvider({ children }) {
       }
       merged.updatedAt = Date.now()
 
-      // Écriture Realtime DB (lecture publique via règles Firebase)
+      // Écriture Realtime DB (async, best effort) uniquement si source live
       if (merged.source === 'live' && merged.price != null && merged.prevDayPx != null) {
-        console.log('🔥 Tentative écriture Firebase BTC:', {
-          price: merged.price,
-          prevDayPx: merged.prevDayPx,
-          deltaAbs: merged.deltaAbs,
-          deltaPct: merged.deltaPct
-        })
         setCachedPrice(symbol, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,
           deltaAbs: merged.deltaAbs,
           deltaPct: merged.deltaPct
-        }).then(() => {
-          console.log('✅ Écriture Firebase réussie!')
-        }).catch((err) => {
-          console.error('❌ Échec écriture Firebase:', err.code, err.message)
-        })
+        }).catch(() => {})
       }
       return { ...prev, [symbol]: merged }
     })
