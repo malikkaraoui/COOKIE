@@ -11,3 +11,11 @@ body,
   height: 100%;
   margin: 0;
 }
+
+/* Animation shake pour drop zone */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+

@@ -1,12 +1,12 @@
-# Architecture du Cache des Prix
+# Architecture du Cache des Prix - Multi-Tokens
 
 ## 🎯 Objectif
 
-Garantir l'**affichage instantané** et la **résilience** des prix même si Hyperliquid est indisponible.
+Garantir l'**affichage instantané** et la **résilience** des prix pour **tous les tokens** même si Hyperliquid est indisponible.
 
 ---
 
-## 📊 Stratégie Hybride : Cache + Live
+## 📊 Stratégie Hybride : localStorage + Firebase + Live
 
 ### 🔄 **Flux de données** :
 
@@ -14,87 +14,93 @@ Garantir l'**affichage instantané** et la **résilience** des prix même si Hyp
 ┌─────────────────────────────────────────────────────────┐
 │                    1. CHARGEMENT INITIAL                │
 │                                                           │
-│  ┌──────────────┐                                        │
-│  │ useBtc24h()  │──► Lit Realtime Database               │
-│  └──────────────┘    (priceCache/BTC)                    │
+│  ┌──────────────────┐                                    │
+│  │ MarketDataContext│──► Lit localStorage                │
+│  └──────────────────┘    (marketDataCache_v1)            │
 │         │                                                 │
 │         ▼                                                 │
-│   📦 Affichage IMMÉDIAT du cache                         │
+│   📦 Affichage IMMÉDIAT de tous les tokens               │
 │   (même si vieux de quelques secondes)                   │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
 │                  2. MISE À JOUR LIVE                    │
 │                                                           │
-│  ┌──────────────┐                                        │
-│  │ useBtc24h()  │──► Fetch API meta (prevDayPx)          │
-│  └──────────────┘                                        │
+│  ┌──────────────────┐                                    │
+│  │ MarketDataContext│──► Polling API assetCtxs (5s)      │
+│  └──────────────────┘    POST /info {"type":"assetCtxs"} │
+│         │                 coins: [BTC, ETH, SOL, ...]    │
+│         ▼                                                 │
+│   🟢 Récupère markPx + prevDayPx pour TOUS les tokens    │
 │         │                                                 │
 │         ▼                                                 │
-│  ┌──────────────┐                                        │
-│  │ useBtc24h()  │──► WebSocket allMids (prix live)       │
-│  └──────────────┘                                        │
+│   📊 Calcul deltaAbs + deltaPct (priceCalculations.js)   │
 │         │                                                 │
 │         ▼                                                 │
-│   🟢 Affichage LIVE + Mise à jour du cache               │
+│   💾 Mise à jour localStorage (instantané)               │
+│         │                                                 │
+│         ▼                                                 │
+│   🔥 Écriture Firebase Realtime DB (backup)              │
 └─────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────┐
 │                  3. FALLBACK (si erreur)                │
 │                                                           │
-│  ❌ Hyperliquid timeout / erreur                         │
+│  ❌ Hyperliquid timeout / erreur 500                     │
 │         │                                                 │
 │         ▼                                                 │
-│  📦 Utilise le cache (< 1h)                              │
+│  📦 Utilise localStorage (cache navigateur)              │
 │     Status: "cached"                                     │
-│     Indicateur: 📦 Cache                                 │
+│     Source: "cache"                                      │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🗂️ Structure du Cache dans Realtime Database
+## 🗂️ Structure du Cache
 
-### **Path** : `/priceCache/{coin}`
+### **localStorage** : `marketDataCache_v1`
 
-**Exemple pour BTC** :
+**Exemple** :
 ```json
 {
-  "priceCache": {
-    "BTC": {
-      "price": 95847.50,
-      "prevDayPx": 92432.10,
-      "deltaAbs": 3415.40,
-      "deltaPct": 3.69,
-      "timestamp": 1732176000000,
-      "source": "hyperliquid"
-    },
-    "ETH": {
-      "price": 3245.12,
-      "prevDayPx": 3180.00,
-      "deltaAbs": 65.12,
-      "deltaPct": 2.05,
-      "timestamp": 1732176050000,
-      "source": "hyperliquid"
-    }
+  "BTC": {
+    "price": 84582,
+    "prevDayPx": 91653,
+    "deltaAbs": -7071,
+    "deltaPct": -7.72,
+    "status": "live",
+    "source": "live",
+    "updatedAt": 1732176000000
+  },
+  "ETH": {
+    "price": 3245.12,
+    "prevDayPx": 3180.00,
+    "deltaAbs": 65.12,
+    "deltaPct": 2.05,
+    "status": "live",
+    "source": "live",
+    "updatedAt": 1732176005000
+  },
+  "kPEPE": {
+    "price": 0.004287,
+    "prevDayPx": 0.004514,
+    "deltaAbs": -0.000227,
+    "deltaPct": -5.03,
+    "status": "live",
+    "source": "live",
+    "updatedAt": 1732176010000
   }
 }
 ```
 
-### **Champs** :
+### **Firebase Realtime Database** : `/priceCache/{coin}`
 
-| Champ | Type | Description |
-|-------|------|-------------|
-| `price` | number | Prix actuel du coin |
-| `prevDayPx` | number | Prix il y a 24h (référence) |
-| `deltaAbs` | number | Variation absolue en $ |
-| `deltaPct` | number | Variation en % |
-| `timestamp` | number | Timestamp de la dernière mise à jour |
-| `source` | string | `"hyperliquid"` (toujours lors de l'écriture) |
+Structure identique à localStorage (backup + partage multi-device)
 
 ---
 
-## ⚙️ Règles de Sécurité
+## ⚙️ Règles de Sécurité Firebase
 
 **Fichier** : `database.rules.json`
 
@@ -102,111 +108,164 @@ Garantir l'**affichage instantané** et la **résilience** des prix même si Hyp
 {
   "priceCache": {
     "$coin": {
-      ".read": true,           // ✅ Lecture publique (pas de données sensibles)
-      ".write": "auth != null" // ✅ Écriture si connecté (évite spam)
+      ".read": true,  // ✅ Lecture publique
+      ".write": true  // ✅ Écriture publique (données non sensibles)
     }
   }
 }
 ```
 
-### **Pourquoi lecture publique ?**
-- Les prix sont des **données publiques** (pas de confidentialité)
-- Permet l'affichage **même sans être connecté**
-- Simplifie l'architecture
-
-### **Pourquoi écriture authentifiée ?**
-- Évite le **spam** ou les écritures abusives
-- Seuls les utilisateurs connectés peuvent mettre à jour le cache
-- Protection basique contre les bots
+### **Pourquoi écriture publique ?**
+- Les prix sont des **données publiques**
+- Permet la mise à jour même sans connexion
+- Simplifie l'architecture (pas de dépendance auth)
 
 ---
 
-## 🧪 Logique de Validation du Cache
+## 🚀 Économie d'Échelle : Multi-Tokens
 
-### **Âge maximum** : 1 heure
-
+### **Avant** : 1 requête par token
 ```javascript
-const MAX_CACHE_AGE = 60 * 60 * 1000; // 1 heure en ms
-
-if (cacheAge > MAX_CACHE_AGE) {
-  console.warn('Cache trop ancien, ignoré');
-  return null;
-}
+// ❌ 10 tokens = 10 requêtes toutes les 5s = surcharge
+fetch('/info', { coins: ['BTC'] })  // Requête 1
+fetch('/info', { coins: ['ETH'] })  // Requête 2
+// ...
 ```
 
-### **Pourquoi 1 heure ?**
-- Les prix crypto changent rapidement
-- Au-delà de 1h, le cache est **potentiellement obsolète**
-- Force une nouvelle tentative vers Hyperliquid
-
-### **Si cache > 1h ET Hyperliquid fail** :
-- Erreur affichée : "Données indisponibles"
-- Pas de prix affiché (mieux que d'afficher un prix périmé)
-
----
-
-## 🚀 Optimisations
-
-### 1️⃣ **Chargement instantané** (< 50ms)
+### **Maintenant** : 1 requête pour tous les tokens
 ```javascript
-// Au montage, charge immédiatement le cache
-useEffect(() => {
-  getCachedPrice('BTC').then(setPrice);
-}, []);
+// ✅ 10 tokens = 1 seule requête toutes les 5s
+fetch('/info', { 
+  type: 'assetCtxs', 
+  coins: ['BTC', 'ETH', 'SOL', 'BNB', 'MATIC', 'kPEPE', 'AVAX', 'ATOM', 'APT', 'ARB']
+})
 ```
 
-### 2️⃣ **Mise à jour asynchrone**
-```javascript
-// Ne bloque pas l'UI
-setCachedPrice('BTC', data).catch(console.warn);
-```
-
-### 3️⃣ **Pas de polling inutile**
-- WebSocket pour le prix live (push)
-- Cache mis à jour uniquement quand les données changent
-- Pas de `setInterval` pour écrire dans la DB
+### **Avantages** :
+- ⚡ **10x plus rapide** (1 requête HTTP au lieu de 10)
+- 💰 **10x moins de bande passante**
+- 🎯 **Scalable** : ajouter un token = 0 requête supplémentaire
 
 ---
 
-## 📈 Avantages de cette Architecture
+## 🧩 Architecture Modulaire
 
-| Avantage | Description |
-|----------|-------------|
-| **⚡ Rapidité** | Affichage instantané au chargement (cache) |
-| **🛡️ Résilience** | Continue de fonctionner si Hyperliquid fail |
-| **📊 Fraîcheur** | Données live quand disponibles |
-| **💰 Économie** | Moins de requêtes API (cache local) |
-| **🎯 Scalabilité** | Facilement extensible à tous les coins |
-
----
-
-## 🔧 Fichiers Impliqués
+### **Fichiers clés** :
 
 | Fichier | Rôle |
 |---------|------|
-| `src/lib/database/priceCache.js` | Service de cache (get/set) |
-| `src/hooks/useBtc24h.js` | Hook avec stratégie cache + live |
-| `src/components/BtcTile.jsx` | Affichage avec indicateur de source |
-| `database.rules.json` | Règles de sécurité Realtime Database |
-| `docs/CACHE_ARCHITECTURE.md` | Cette documentation |
+| `src/config/tokenList.js` | Configuration centralisée des tokens |
+| `src/context/MarketDataContext.jsx` | Polling API + gestion cache multi-tokens |
+| `src/hooks/useToken.js` | Hook pour accéder aux données d'un token |
+| `src/hooks/useTokenIcon.js` | Gestion centralisée des icônes |
+| `src/elements/TokenTile.jsx` | Composant générique réutilisable |
+| `src/lib/database/priceCache.js` | Service Firebase (backup)
 
 ---
 
 ## 📝 Exemple d'Utilisation
 
+### **Méthode moderne (recommandée)** :
 ```javascript
-import useBtc24h from '../hooks/useBtc24h';
+import TokenTile from '../elements/TokenTile';
 
 function MyComponent() {
-  const { price, deltaPct, status, source } = useBtc24h();
+  return (
+    <div>
+      <TokenTile symbol="BTC" />
+      <TokenTile symbol="ETH" />
+      <TokenTile symbol="kPEPE" />
+    </div>
+  );
+}
+```
+
+### **Accès direct aux données** :
+```javascript
+import { useToken } from '../hooks/useToken';
+
+function MyComponent() {
+  const btc = useToken('BTC');
   
   return (
     <div>
-      <p>Prix: {price}</p>
-      <p>Variation: {deltaPct}%</p>
-      <p>Status: {status}</p>      {/* 'loading' | 'live' | 'cached' */}
-      <p>Source: {source}</p>       {/* 'hyperliquid' | 'cache' */}
+      <p>Prix: {btc.price} $</p>
+      <p>Variation: {btc.deltaPct}%</p>
+      <p>Status: {btc.status}</p>
+      <p>Source: {btc.source}</p>
     </div>
+  );
+}
+```
+
+---
+
+## 🎨 Affichage Adaptatif des Prix
+
+### **Logique de décimales selon le prix** :
+
+| Prix | Décimales | Exemple |
+|------|-----------|---------|
+| < 0,01 $ | **6 décimales** | kPEPE: 0,004287 $ |
+| < 1 $ | **4 décimales** | 0,5432 $ |
+| < 100 $ | **2 décimales** | ETH: 3 245,12 $ |
+| ≥ 100 $ | **0 décimale** | BTC: 84 582 $ |
+
+---
+
+## 🎨 Indicateurs Visuels
+
+| Status | Couleur | Signification |
+|--------|---------|---------------|
+| `live` | 🟢 Vert | Données en temps réel depuis Hyperliquid |
+| `cached` | 🟡 Gris | Données du cache localStorage |
+| `loading` | ⏳ Gris | Chargement initial |
+| `error` | ❌ Rouge | Erreur critique |
+
+---
+
+## 🔮 Évolutions & Ajout de Tokens
+
+### ✅ **Phase 2 : Multi-tokens** (FAIT)
+- 10 tokens supportés
+- 1 requête API pour tous
+- Composants réutilisables
+
+### **Ajout d'un nouveau token** :
+
+**1. Vérifier disponibilité** :
+```bash
+node scripts/update-hyperliquid-tokens.js
+```
+
+**2. Ajouter dans `src/config/tokenList.js`** :
+```javascript
+{
+  symbol: 'DOGE',
+  name: 'Dogecoin',
+  color: '#C2A633',
+  decimals: 2
+}
+```
+
+**3. Utiliser** :
+```javascript
+<TokenTile symbol="DOGE" />
+```
+
+✅ **Automatique** : polling, cache, calculs, affichage adaptatif
+
+---
+
+## 📊 Métriques Actuelles
+
+- **Tokens supportés** : 10 actifs
+- **Fréquence** : 5 secondes
+- **Requêtes API** : 1 pour tous les tokens
+- **Chargement** : < 50ms (localStorage)
+- **Fallback** : localStorage → Firebase
+
+**Liste** : BTC, ETH, SOL, BNB, MATIC, kPEPE, AVAX, ATOM, APT, ARB
   );
 }
 ```

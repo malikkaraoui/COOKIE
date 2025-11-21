@@ -1,19 +1,32 @@
 // Composant générique TokenTile - affiche prix, variation et statut d'un token
 // Utilise le hook useToken pour récupérer les données
+// Supporte drag & drop pour sélection
+import { useState } from 'react'
 import { useToken } from '../hooks/useToken'
 import { useTokenIcon } from '../hooks/useTokenIcon'
 
 function narrowSpaces(str) { return str.replace(/\u00A0/g, "\u202F") }
-function fmtUSD(n) { return narrowSpaces(n.toLocaleString('fr-FR', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })) }
+function fmtUSD(n, decimals = null) {
+  // Si pas de decimals spécifié, adapter selon le prix
+  let maxDecimals = decimals
+  if (maxDecimals === null) {
+    if (n < 0.01) maxDecimals = 6       // Très petit prix (ex: kPEPE)
+    else if (n < 1) maxDecimals = 4     // Petit prix
+    else if (n < 100) maxDecimals = 2   // Prix moyen
+    else maxDecimals = 0                // Grand prix
+  }
+  return narrowSpaces(n.toLocaleString('fr-FR', { style: 'currency', currency: 'USD', minimumFractionDigits: maxDecimals, maximumFractionDigits: maxDecimals }))
+}
 function fmtSignedAbs(n, d = 0) {
   const s = n >= 0 ? '' : '-'
   const a = Math.abs(n)
   return `${s}${a.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })}`
 }
 
-export default function TokenTile({ symbol }) {
+export default function TokenTile({ symbol, draggable = false }) {
   const token = useToken(symbol)
   const { iconPath, handleError } = useTokenIcon(symbol)
+  const [isDragging, setIsDragging] = useState(false)
   
   const hasDelta = token.deltaAbs != null && token.deltaPct != null
   const color = !hasDelta ? '#94a3b8' : token.deltaAbs >= 0 ? '#22c55e' : '#ef4444'
@@ -28,8 +41,31 @@ export default function TokenTile({ symbol }) {
   // Source (hyperliquid vs cache navigateur)
   const sourceLabel = token.source === 'live' ? 'Hyperliquid' : 'Navigateur'
 
+  // Handlers drag & drop
+  const handleDragStart = (e) => {
+    if (!draggable) return
+    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.setData('text/plain', symbol)
+    setIsDragging(true)
+  }
+
+  const handleDragEnd = () => {
+    setIsDragging(false)
+  }
+
   return (
-    <div style={styles.card}>
+    <div 
+      style={{
+        ...styles.card,
+        opacity: isDragging ? 0.5 : 1,
+        cursor: draggable ? 'grab' : 'default',
+        transform: isDragging ? 'scale(0.95)' : 'scale(1)',
+        transition: 'all 0.2s ease'
+      }}
+      draggable={draggable}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
       <img 
         src={iconPath} 
         alt={symbol} 
@@ -41,7 +77,7 @@ export default function TokenTile({ symbol }) {
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={styles.name}>{token.name}</div>
         <div style={{ ...styles.delta, color, minHeight: 16 }}>
-          {hasDelta ? `(${fmtSignedAbs(token.deltaAbs, 0)} / ${fmtSignedAbs(token.deltaPct, 2)}%)` : 'Variation...'}
+          {hasDelta ? `(${fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 0)} / ${fmtSignedAbs(token.deltaPct, 2)}%)` : 'Variation...'}
         </div>
         <div style={styles.price}>{token.price != null ? fmtUSD(token.price) : '—'}</div>
         <div style={styles.sub}>

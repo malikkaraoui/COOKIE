@@ -156,3 +156,40 @@ export function calculateAge(birthDate) {
   
   return age >= 0 ? age : null
 }
+
+/**
+ * Sauvegarde les tokens sélectionnés (Ma cuisine) pour un utilisateur
+ * Structure: /users/{uid}/selectedTokens: ["BTC", "ETH", ...]
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {Array<string>} tokens - Liste des symboles de tokens (max 4)
+ * @returns {Promise<void>}
+ */
+export async function saveSelectedTokens(uid, tokens) {
+  if (!uid) throw new Error('UID requis')
+  if (!Array.isArray(tokens)) throw new Error('tokens doit être un tableau')
+  
+  const tokensRef = ref(db, `users/${uid}/selectedTokens`)
+  await set(tokensRef, tokens.slice(0, 4)) // Max 4 tokens
+}
+
+/**
+ * Récupère les tokens sélectionnés pour un utilisateur
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @returns {Promise<Array<string>>} - Liste des symboles de tokens
+ */
+export async function getSelectedTokens(uid) {
+  if (!uid) return []
+  
+  const tokensRef = ref(db, `users/${uid}/selectedTokens`)
+  const snapshot = await get(tokensRef)
+  
+  if (snapshot.exists()) {
+    const data = snapshot.val()
+    return Array.isArray(data) ? data : []
+  }
+  
+  return []
+}
+
