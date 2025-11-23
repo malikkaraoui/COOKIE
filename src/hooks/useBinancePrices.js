@@ -1,12 +1,14 @@
 /**
- * Hook pour récupérer TOUS les prix Binance
+ * Hook pour récupérer TOUS les prix Binance depuis la whitelist
  * Rafraîchissement automatique toutes les 5 secondes
- * Écrit tous les tokens dans Firebase priceTokenBinance/{symbol}
+ * Écrit tous les tokens dans Firebase priceTokenBinance/{id}
+ * 
+ * Utilise src/config/binanceTrackedTokens.js comme source (30 tokens)
  */
 
 import { useEffect } from 'react'
 import { getBinanceTicker24hr } from '../lib/binance/binanceClient'
-import { BINANCE_SYMBOLS } from '../config/binanceConfig'
+import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import { setCachedPriceBinance } from '../lib/database/priceCache'
 
 export function useBinancePrices() {
@@ -14,18 +16,18 @@ export function useBinancePrices() {
     let isMounted = true
 
     async function fetchAllBinancePrices() {
-      const symbols = Object.entries(BINANCE_SYMBOLS)
-      
-      // Fetch tous les tokens en parallèle
-      const promises = symbols.map(async ([coin, tradingPair]) => {
+      // Fetch tous les tokens de la whitelist en parallèle
+      const promises = BINANCE_DEFAULT_TOKENS.map(async (token) => {
         try {
-          const data = await getBinanceTicker24hr(tradingPair)
+          const data = await getBinanceTicker24hr(token.symbol)
           
           if (isMounted) {
-            console.log(`📊 Binance ${coin}: $${data.price.toFixed(coin === 'SHIB' ? 8 : 2)} (${data.priceChangePercent >= 0 ? '+' : ''}${data.priceChangePercent.toFixed(2)}%)`)
+            // Log avec précision adaptée (8 décimales pour micro-caps)
+            const decimals = data.price < 0.01 ? 8 : 2
+            console.log(`📊 Binance ${token.id}: $${data.price.toFixed(decimals)} (${data.priceChangePercent >= 0 ? '+' : ''}${data.priceChangePercent.toFixed(2)}%)`)
             
-            // Écriture dans Firebase priceTokenBinance/{coin}
-            await setCachedPriceBinance(coin, {
+            // Écriture dans Firebase /priceTokenBinance/{id}
+            await setCachedPriceBinance(token.id, {
               price: data.price,
               prevDayPx: data.prevClosePrice,
               deltaAbs: data.priceChange,
@@ -33,7 +35,7 @@ export function useBinancePrices() {
             })
           }
         } catch (error) {
-          console.error(`❌ Erreur fetch Binance ${coin}:`, error.message)
+          console.error(`❌ Erreur fetch Binance ${token.id}:`, error.message)
         }
       })
 

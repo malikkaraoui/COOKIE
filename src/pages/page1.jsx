@@ -5,7 +5,7 @@ export default function Page1() {
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
       <h1 style={{ color: '#e5e7eb', marginBottom: 16 }}>Marmiton Communautaire</h1>
       <p style={{ color: '#94a3b8', fontSize: 14 }}>
-        Glissez jusqu'à 4 tokens vers "Ma cuisine" et commencer à cuisiner !!
+        Glissez jusqu'à 4 Inggrédients vers "Ma cuisine" à cuisiner !! 👨🏼‍🍳
       </p>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         <TokenTile symbol="BTC" source="hyperliquid" draggable />

@@ -1,3 +1,21 @@
+IMPORTANT – Séparation des rôles:
+
+1. Pour récupérer les PRIX et la VARIATION 24h des tokens (BTC, ETH, BNB, DOGE, SHIB, CAKE, etc.), tu dois utiliser UNIQUEMENT l’API Binance Spot (REST):
+   - GET /api/v3/ticker/price pour le dernier prix
+   - GET /api/v3/ticker/24hr pour le prix + variation 24h
+   Base URL: https://api.binance.com
+
+2. Tu NE DOIS PAS utiliser NOWNodes/BSC ni BlockBook pour calculer les prix des tokens BEP-20.
+   - Pas de eth_call vers les contrats pour les prix
+   - Pas d’intégration PancakeSwap ou oracle pour cette partie
+
+3. NOWNodes/BSC ne sert que pour:
+   - lecture des balances et transactions on-chain
+   - récupération des tokenBalances éventuels
+   - éventuellement getCurrentFiatRates pour BNB uniquement (taux fiat global de la chaîne), pas pour les autres tokens.
+
+
+
 # Copilot – Intégration BSC / NOWNodes pour COOKIE
 
 Tu es l’assistant de développement du projet **COOKIE**.  

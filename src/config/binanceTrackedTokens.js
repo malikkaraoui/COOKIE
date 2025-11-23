@@ -1,0 +1,75 @@
+/**
+ * Liste des tokens suivis sur Binance Spot
+ * 
+ * - id           : identifiant interne (ex. "BTC")
+ * - symbol       : symbole complet Binance Spot (ex. "BTCUSDT")
+ * - baseAsset    : asset de base (ex. "BTC")
+ * - quoteAsset   : asset de cotation (toujours "USDT")
+ * - source       : "binance-spot"
+ * 
+ * Whitelist de 30 tokens majeurs disponibles sur Binance
+ */
+
+export const BINANCE_DEFAULT_TOKENS = [
+  // ⚠️ Top 3 - Ne jamais retirer
+  { id: "BTC",  symbol: "BTCUSDT",  baseAsset: "BTC",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "ETH",  symbol: "ETHUSDT",  baseAsset: "ETH",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "BNB",  symbol: "BNBUSDT",  baseAsset: "BNB",  quoteAsset: "USDT", source: "binance-spot" },
+
+  // Majors L1
+  { id: "SOL",  symbol: "SOLUSDT",  baseAsset: "SOL",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "XRP",  symbol: "XRPUSDT",  baseAsset: "XRP",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "ADA",  symbol: "ADAUSDT",  baseAsset: "ADA",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "TON",  symbol: "TONUSDT",  baseAsset: "TON",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "TRX",  symbol: "TRXUSDT",  baseAsset: "TRX",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "AVAX", symbol: "AVAXUSDT", baseAsset: "AVAX", quoteAsset: "USDT", source: "binance-spot" },
+
+  // Meme coins (ne jamais retirer)
+  { id: "DOGE", symbol: "DOGEUSDT", baseAsset: "DOGE", quoteAsset: "USDT", source: "binance-spot" },
+  { id: "SHIB", symbol: "SHIBUSDT", baseAsset: "SHIB", quoteAsset: "USDT", source: "binance-spot" },
+  { id: "PEPE", symbol: "PEPEUSDT", baseAsset: "PEPE", quoteAsset: "USDT", source: "binance-spot" },
+
+  // DeFi blue chips
+  { id: "LINK", symbol: "LINKUSDT", baseAsset: "LINK", quoteAsset: "USDT", source: "binance-spot" },
+  { id: "DOT",  symbol: "DOTUSDT",  baseAsset: "DOT",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "MATIC",symbol: "MATICUSDT",baseAsset: "MATIC",quoteAsset: "USDT", source: "binance-spot" },
+  { id: "UNI",  symbol: "UNIUSDT",  baseAsset: "UNI",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "RUNE", symbol: "RUNEUSDT", baseAsset: "RUNE", quoteAsset: "USDT", source: "binance-spot" },
+  { id: "INJ",  symbol: "INJUSDT",  baseAsset: "INJ",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "ATOM", symbol: "ATOMUSDT", baseAsset: "ATOM", quoteAsset: "USDT", source: "binance-spot" },
+
+  // L1/L2 récents
+  { id: "SUI",  symbol: "SUIUSDT",  baseAsset: "SUI",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "APT",  symbol: "APTUSDT",  baseAsset: "APT",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "ARB",  symbol: "ARBUSDT",  baseAsset: "ARB",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "OP",   symbol: "OPUSDT",   baseAsset: "OP",   quoteAsset: "USDT", source: "binance-spot" },
+  { id: "SEI",  symbol: "SEIUSDT",  baseAsset: "SEI",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "TIA",  symbol: "TIAUSDT",  baseAsset: "TIA",  quoteAsset: "USDT", source: "binance-spot" },
+
+  // Old school
+  { id: "LTC",  symbol: "LTCUSDT",  baseAsset: "LTC",  quoteAsset: "USDT", source: "binance-spot" },
+  { id: "BCH",  symbol: "BCHUSDT",  baseAsset: "BCH",  quoteAsset: "USDT", source: "binance-spot" },
+
+  // Narrative ordinals / infra
+  { id: "ORDI", symbol: "ORDIUSDT", baseAsset: "ORDI", quoteAsset: "USDT", source: "binance-spot" },
+  { id: "JUP",  symbol: "JUPUSDT",  baseAsset: "JUP",  quoteAsset: "USDT", source: "binance-spot" },
+
+  // DeFi BSC
+  { id: "CAKE", symbol: "CAKEUSDT", baseAsset: "CAKE", quoteAsset: "USDT", source: "binance-spot" },
+]
+
+/**
+ * Liste des symboles Binance Spot (ex. ["BTCUSDT", ...])
+ * Utile pour boucler sur /api/v3/ticker/price et /api/v3/ticker/24hr
+ */
+export const BINANCE_DEFAULT_SYMBOLS = BINANCE_DEFAULT_TOKENS.map(
+  (token) => token.symbol
+)
+
+/**
+ * Liste des id internes (ex. ["BTC", "ETH", ...])
+ * Utile pour indexer le priceCache dans Firebase (/priceTokenBinance/{id})
+ */
+export const BINANCE_DEFAULT_IDS = BINANCE_DEFAULT_TOKENS.map(
+  (token) => token.id
+)

@@ -16,16 +16,16 @@ export const BINANCE_ENDPOINTS = {
 }
 
 /**
- * Symboles Binance (paires de trading)
- * Format: {ASSET}{QUOTE} (ex: BNBUSDT)
+ * Import de la whitelist de tokens Binance
+ * Voir src/config/binanceTrackedTokens.js pour la liste complète (30 tokens)
  */
-export const BINANCE_SYMBOLS = {
-  BNB: 'BNBUSDT',
-  BTC: 'BTCUSDT',
-  ETH: 'ETHUSDT',
-  POL: 'POLUSDT',
-  DOT: 'DOTUSDT',
-  ATOM: 'ATOMUSDT',
-  DOGE: 'DOGEUSDT',
-  SHIB: 'SHIBUSDT'
-}
+import { BINANCE_DEFAULT_TOKENS } from './binanceTrackedTokens.js'
+
+// Export pour compatibilité avec le code existant
+export const BINANCE_TOKENS = BINANCE_DEFAULT_TOKENS
+
+// Map {id -> symbol} pour accès rapide (ex: {BTC: 'BTCUSDT'})
+export const BINANCE_SYMBOLS = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
+  acc[token.id] = token.symbol
+  return acc
+}, {})

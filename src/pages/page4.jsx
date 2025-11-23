@@ -1,30 +1,43 @@
 /**
  * Page Binance - Liste des tokens depuis Binance Spot API
- * Affiche tous les tokens configurés avec prix et variation 24h
+ * Affiche tous les tokens de la whitelist (30 tokens) avec prix et variation 24h
  * Support drag & drop vers "Ma cuisine"
+ * 
+ * Utilise src/config/binanceTrackedTokens.js comme source
  */
 
 import { useBinanceToken } from '../hooks/useBinanceToken'
 import { useDraggable } from '../hooks/useDraggable'
-import { BINANCE_SYMBOLS } from '../config/binanceConfig'
+import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 
-function BinanceTokenCard({ symbol }) {
-  const { price, deltaPct, loading, error } = useBinanceToken(symbol)
+function BinanceTokenCard({ tokenId }) {
+  const { price, deltaPct, loading, error } = useBinanceToken(tokenId)
   const { dragHandlers, dragProps } = useDraggable(true)
 
-  // Couleurs par token
+  // Couleurs par token (palette étendue pour 30 tokens)
   const tokenColors = {
-    BNB: '#F3BA2F',
-    BTC: '#F7931A',
-    ETH: '#627EEA',
-    POL: '#8247E5',
-    DOT: '#E6007A',
-    ATOM: '#2E3148',
-    DOGE: '#C3A634',
-    SHIB: '#FFA409'
+    // Top 3
+    BTC: '#F7931A', ETH: '#627EEA', BNB: '#F3BA2F',
+    // Majors L1
+    SOL: '#14F195', XRP: '#23292F', ADA: '#0033AD', 
+    TON: '#0088CC', TRX: '#FF0013', AVAX: '#E84142',
+    // Memes
+    DOGE: '#C3A634', SHIB: '#FFA409', PEPE: '#3D9970',
+    // DeFi
+    LINK: '#2A5ADA', DOT: '#E6007A', MATIC: '#8247E5',
+    UNI: '#FF007A', RUNE: '#00CCAB', INJ: '#00F2FE', ATOM: '#2E3148',
+    // L1/L2 récents
+    SUI: '#4DA2FF', APT: '#00D4AA', ARB: '#28A0F0',
+    OP: '#FF0420', SEI: '#B91C1C', TIA: '#7B2BF9',
+    // Old school
+    LTC: '#345D9D', BCH: '#8DC351',
+    // Narrative
+    ORDI: '#FF6B00', JUP: '#FFA500',
+    // DeFi BSC
+    CAKE: '#D1884F'
   }
 
-  const color = tokenColors[symbol] || '#888'
+  const color = tokenColors[tokenId] || '#888'
 
   return (
     <div 
@@ -39,7 +52,7 @@ function BinanceTokenCard({ symbol }) {
         ...dragProps
       }}
       {...dragHandlers}
-      onDragStart={(e) => dragHandlers.onDragStart(e, `${symbol}:binance`)}
+      onDragStart={(e) => dragHandlers.onDragStart(e, `${tokenId}:binance`)}
       onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
       onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
     >
@@ -50,7 +63,7 @@ function BinanceTokenCard({ symbol }) {
         color: color,
         marginBottom: '16px'
       }}>
-        {symbol}
+        {tokenId}
       </h3>
 
       {/* Prix et variation */}
@@ -94,8 +107,6 @@ function BinanceTokenCard({ symbol }) {
 }
 
 export default function Page4() {
-  const tokens = Object.keys(BINANCE_SYMBOLS)
-
   return (
     <div style={{ padding: '40px', width: '100%', overflowY: 'auto' }}>
       <h1 style={{ 
@@ -104,11 +115,11 @@ export default function Page4() {
         marginBottom: '12px',
         color: '#fff'
       }}>
-        Binance liste token
+        Binance liste token ({BINANCE_DEFAULT_TOKENS.length} tokens)
       </h1>
 
       <p style={{ color: '#888', marginBottom: '40px', fontSize: '16px' }}>
-        Glissez jusqu'à 4 tokens vers "Ma cuisine" pour les suivre
+        Glissez jusqu'à 4 Inggrédients vers "Ma cuisine" à cuisiner !! 👨🏼‍🍳
       </p>
 
       {/* Grid de tokens */}
@@ -118,8 +129,8 @@ export default function Page4() {
         gap: '24px',
         maxWidth: '1400px'
       }}>
-        {tokens.map(symbol => (
-          <BinanceTokenCard key={symbol} symbol={symbol} />
+        {BINANCE_DEFAULT_TOKENS.map(token => (
+          <BinanceTokenCard key={token.id} tokenId={token.id} />
         ))}
       </div>
     </div>
