@@ -5,8 +5,12 @@ import { MarketDataProvider } from './context/MarketDataContext'
 import { SelectedTokensProvider } from './context/SelectedTokensContext'
 import { initializePriceNodes } from './lib/database/initFirebase'
 import { cleanupOldPriceCache } from './lib/database/cleanupFirebase'
+import { useBinancePrices } from './hooks/useBinancePrices'
 
 export default function App() {
+  // Polling automatique des prix Binance → Firebase
+  useBinancePrices()
+
   // Initialiser les nœuds Firebase au démarrage
   useEffect(() => {
     initializePriceNodes()

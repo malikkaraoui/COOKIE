@@ -20,5 +20,12 @@ export const BINANCE_ENDPOINTS = {
  * Format: {ASSET}{QUOTE} (ex: BNBUSDT)
  */
 export const BINANCE_SYMBOLS = {
-  BNB: 'BNBUSDT'
+  BNB: 'BNBUSDT',
+  BTC: 'BTCUSDT',
+  ETH: 'ETHUSDT',
+  POL: 'POLUSDT',
+  DOT: 'DOTUSDT',
+  ATOM: 'ATOMUSDT',
+  DOGE: 'DOGEUSDT',
+  SHIB: 'SHIBUSDT'
 }

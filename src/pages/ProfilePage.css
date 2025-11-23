@@ -197,14 +197,30 @@
   color: #5f6368;
   transition: background-color 0.2s ease;
   text-decoration: none;
+  border-radius: 6px;
 }
 
 .profile-button:hover {
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+.profile-button span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
 .profile-icon {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
+}
+
+.profile-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }

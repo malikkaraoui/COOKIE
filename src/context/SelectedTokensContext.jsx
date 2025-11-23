@@ -65,13 +65,25 @@ export function SelectedTokensProvider({ children }) {
     if (!user) return // Sécurité : pas d'ajout si non connecté
     
     setUserTokens(prev => {
-      // Éviter doublons (même symbol:source)
+      // Extraire le symbole (avant le ':')
+      const symbol = symbolWithSource.split(':')[0]
+      
+      // Vérifier si le symbole existe déjà (peu importe la source)
+      const symbolExists = prev.some(token => token.split(':')[0] === symbol)
+      if (symbolExists) {
+        console.warn(`Le token ${symbol} est déjà dans votre cuisine`)
+        return prev
+      }
+      
+      // Éviter doublons exacts (même symbol:source)
       if (prev.includes(symbolWithSource)) return prev
+      
       // Max 4 tokens
       if (prev.length >= MAX_TOKENS) {
         console.warn(`Maximum ${MAX_TOKENS} tokens`)
         return prev
       }
+      
       return [...prev, symbolWithSource]
     })
   }
