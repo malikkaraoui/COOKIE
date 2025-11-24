@@ -1,18 +1,12 @@
 /**
  * Affichage des résultats de simulation portfolio
- * Capital, Valeur finale, Profit, APY moyen, Rendement
+ * Valeur finale, Profit, Rendement Total
  */
 
-export default function PortfolioResults({ results, capitalInitial }) {
-  const { valeurFinale, profit, apyMoyenPct, rendementPct } = results
+export default function PortfolioResults({ results }) {
+  const { valeurFinale, profit, rendementPct } = results
 
   const metrics = [
-    {
-      label: 'Capital Initial',
-      value: `${capitalInitial.toFixed(2)} $`,
-      color: '#94a3b8',
-      icon: '💰'
-    },
     {
       label: 'Valeur Finale',
       value: `${valeurFinale.toFixed(2)} $`,
@@ -24,12 +18,6 @@ export default function PortfolioResults({ results, capitalInitial }) {
       value: `${profit >= 0 ? '+' : ''}${profit.toFixed(2)} $`,
       color: profit >= 0 ? '#22c55e' : '#ef4444',
       icon: profit >= 0 ? '📈' : '📉'
-    },
-    {
-      label: 'APY Moyen',
-      value: `${apyMoyenPct >= 0 ? '+' : ''}${apyMoyenPct.toFixed(2)}%`,
-      color: apyMoyenPct >= 0 ? '#22c55e' : '#ef4444',
-      icon: '⚡'
     },
     {
       label: 'Rendement Total',

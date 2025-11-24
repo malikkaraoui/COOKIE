@@ -101,7 +101,7 @@ export default function Page2() {
       </div>
 
       {/* Résultats */}
-      <PortfolioResults results={results} capitalInitial={capitalInitial} />
+      <PortfolioResults results={results} />
 
       {/* Faders de poids */}
       <div style={{
