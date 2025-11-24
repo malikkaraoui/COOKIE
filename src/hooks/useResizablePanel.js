@@ -12,6 +12,7 @@ export function useResizablePanel({
 } = {}) {
   const [size, setSize] = useState(initial)
   const [isResizing, setIsResizing] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false) // État collapsed
 
   const handleMouseMove = useCallback((e) => {
     if (!isResizing) return
@@ -47,9 +48,23 @@ export function useResizablePanel({
     setIsResizing(true)
   }, [])
 
+  // Double-clic pour toggle min/max
+  const handleDoubleClick = useCallback(() => {
+    if (isCollapsed) {
+      // Si collapsed, étendre au max
+      setSize(max)
+      setIsCollapsed(false)
+    } else {
+      // Si étendu, réduire au min
+      setSize(min)
+      setIsCollapsed(true)
+    }
+  }, [isCollapsed, min, max])
+
   return {
     size,
     isResizing,
     startResizing,
+    handleDoubleClick, // Nouvelle fonction exportée
   }
 }

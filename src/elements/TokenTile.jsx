@@ -50,9 +50,13 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
 
   return (
     <div 
-      style={{ ...styles.card, ...dragProps }}
-      {...dragHandlers}
-      onDragStart={(e) => dragHandlers.onDragStart(e, `${symbol}:${source}`)}
+      style={{ 
+        ...styles.card, 
+        ...(draggable ? dragProps : {}),
+        cursor: draggable ? 'grab' : 'default'
+      }}
+      {...(draggable ? dragHandlers : {})}
+      onDragStart={draggable ? (e) => dragHandlers.onDragStart(e, `${symbol}:${source}`) : undefined}
     >
       <img 
         src={iconPath} 

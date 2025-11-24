@@ -37,12 +37,53 @@ export default function App() {
 
 | Type de Logique | Emplacement | Exemple |
 |----------------|-------------|---------|
-| UI réutilisable | `src/hooks/` | `useDraggable.js`, `useResizablePanel.js` |
+| **Providers (Context global)** | `src/providers/` ⚠️ TODO | `MarketDataProvider.jsx`, `BinanceProvider.jsx`, `SelectedTokensProvider.jsx` |
+| **Context (À migrer)** | `src/context/` | `MarketDataContext.jsx`, `SelectedTokensContext.jsx`, `NavigationContext.jsx` |
+| **Hooks (Logique locale)** | `src/hooks/` | `useToken.js`, `useDraggable.js`, `useResizablePanel.js` |
 | Métier / API | `src/lib/` | `priceCalculations.js`, `binanceClient.js` |
 | Configuration | `src/config/` | `tokenList.js`, `binanceConfig.js` |
 | Composants UI | `src/elements/` | `TokenTile.jsx` |
 | Layouts globaux | `src/components/` | `Topbar.jsx`, `Sidebar.jsx` |
 | Pages routing | `src/pages/` | `page1.jsx`, `page2.jsx`, `page4.jsx` |
+
+**Note** : Migration `/context` → `/providers` planifiée mais non effectuée pour éviter régressions.
+
+### 🔄 Convention Providers vs Hooks
+
+**Providers (`src/providers/`)** :
+- État **global** partagé dans toute l'application
+- Wrappent l'arborescence React dans `App.jsx`
+- Contiennent Context + Provider + logique de state management
+- Exemples : Polling API, authentification, navigation globale
+
+**Hooks (`src/hooks/`)** :
+- Logique **réutilisable locale** pour composants individuels
+- Appelés directement dans les composants
+- Retournent données/fonctions sans créer de Context
+- Exemples : Lecture données depuis Context, logique UI, side effects locaux
+
+```jsx
+// ✅ BON : Provider pour état global
+// src/providers/MarketDataProvider.jsx
+export function MarketDataProvider({ children }) {
+  const [tokens, setTokens] = useState({})
+  // Polling API global...
+  return <MarketDataContext.Provider value={{ tokens }}>{children}</MarketDataContext.Provider>
+}
+
+// ✅ BON : Hook pour consommer le provider
+// src/hooks/useToken.js
+export function useToken(symbol) {
+  const { tokens } = useContext(MarketDataContext)
+  return tokens[symbol]
+}
+
+// ❌ MAUVAIS : Hook qui fait du polling global
+// src/hooks/useBinancePrices.js (doit être un Provider)
+export function useBinancePrices() {
+  useEffect(() => { setInterval(...) }, []) // ❌ Side effect global
+}
+```
 
 ### Convention Routing (URLs)
 - **PascalCase obligatoire** : `/MarmitonCommunautaire`, `/MaCuisine`, `/BinanceToken`
@@ -153,14 +194,17 @@ export function calculatePriceChange(current, previous) {
 ## ✅ Checklist Code
 
 - [ ] App.jsx minimal (< 50 lignes)
-- [ ] Logique UI → hooks/
-- [ ] Logique métier → lib/
+- [ ] **Providers** → `src/providers/` (état global, polling API)
+- [ ] **Hooks** → `src/hooks/` (logique locale, lecture Context)
+- [ ] Logique métier → `src/lib/`
 - [ ] Import paths corrects (`../../config/firebase` depuis lib/)
 - [ ] `setCachedPriceHyper` pour Hyperliquid
 - [ ] `setCachedPriceBinance` pour Binance
 - [ ] NOWNodes JAMAIS pour prix
 - [ ] Pas clés API en dur
 - [ ] Variables d'environnement (.env.local)
+- [ ] **AUCUNE régression** après modification (tester avant commit)
+- [ ] **Code propre** : supprimer fichiers `_BACKUP`, `_OLD`, `_STEP1`
 
 ---
 
@@ -188,7 +232,37 @@ export function calculatePriceChange(current, previous) {
 
 ---
 
+## 🛡️ Règles de Modification du Code
+
+### Avant TOUTE modification :
+1. **Lire le code existant** pour comprendre le contexte
+2. **Identifier les dépendances** (imports, exports, usages)
+3. **Prévoir les impacts** sur les autres fichiers
+4. **Tester mentalement** les cas limites
+
+### Pendant la modification :
+1. **Une seule responsabilité par commit**
+2. **Garder le code fonctionnel** à chaque étape
+3. **Mettre à jour TOUS les imports** concernés
+4. **Supprimer les fichiers obsolètes** (backups, old versions)
+
+### Après la modification :
+1. **Vérifier aucune régression** (tester les fonctionnalités impactées)
+2. **Nettoyer les console.log** et code commenté
+3. **Mettre à jour la documentation** si architecture modifiée
+4. **Commit avec message descriptif**
+
+### ⛔ Interdictions absolues :
+- ❌ Laisser du code cassé "pour plus tard"
+- ❌ Créer des fichiers `_BACKUP` ou `_OLD` (utiliser Git)
+- ❌ Modifier sans tester
+- ❌ Casser une feature pour en ajouter une autre
+- ❌ Ignorer les erreurs TypeScript/ESLint
+
+---
+
 **Avant de coder, confirmer compréhension :**
 1. Architecture dual-source (Hyperliquid + Binance)
 2. Anti-patterns (NOWNodes pour prix, clés API client)
 3. Patterns (hooks UI, lib métier, import paths)
+4. **Convention Providers vs Hooks** (global vs local)

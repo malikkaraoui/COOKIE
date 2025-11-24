@@ -15,9 +15,10 @@ body {
 }
 
 .app {
-  min-height: 100vh;
+  height: 100vh; /* Hauteur exacte de la fenêtre */
   display: flex;
   flex-direction: column;
+  overflow: hidden; /* Empêche le débordement */
 }
 
 /* TAP BAR */
@@ -56,6 +57,7 @@ body {
   flex: 1;
   display: flex;
   min-height: 0;
+  overflow: hidden; /* Empêche le débordement */
 }
 
 /* NAVIGATION */
@@ -64,8 +66,8 @@ body {
   padding: 24px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
   flex-shrink: 0; /* Empêche la compression */
+  overflow: hidden; /* Pas de scroll sur la sidebar elle-même */
 }
 
 /* conteneur des liens */
@@ -74,9 +76,29 @@ body {
   flex-direction: column;
   gap: 8px;
   width: 100%;
-  height: 100%;
-  overflow-y: auto;
+  height: 100%; /* Prend toute la hauteur disponible */
+  overflow: hidden; /* Géré par scrollable-links */
+}
+
+/* Zone scrollable des liens uniquement */
+.scrollable-links {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto; /* Scroll uniquement sur les liens */
+  flex: 1; /* Prend l'espace restant */
   min-height: 0; /* Permet le scroll */
+}
+
+/* Conteneur des boutons auth (sticky en bas) */
+.sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  flex-shrink: 0; /* Ne se compresse jamais */
 }
 
 /* liens de navigation */
@@ -120,7 +142,6 @@ body {
   flex: 1;
   background: #e4b85a;
   padding: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow-y: auto; /* Scroll indépendant du contenu de la page */
+  height: 100%; /* Hauteur fixe */
 }
