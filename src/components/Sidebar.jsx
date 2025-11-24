@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
-import { ShoppingBasket, ChefHat } from 'lucide-react'
+import { ShoppingBasket, ChefHat, Soup } from 'lucide-react'
 
 export default function Sidebar() {
   // gestion du redimensionnement horizontal
@@ -83,6 +83,11 @@ export default function Sidebar() {
       label: 'Ma cuisine', 
       dropZone: true,
       icon: ChefHat
+    },
+    { 
+      to: '/LaMarmite', 
+      label: 'La Marmite',
+      icon: Soup
     },
   ]
 
