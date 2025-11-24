@@ -308,6 +308,21 @@ function PieChart({ weights, colors }) {
         
         if (weight === 0) return null
 
+        // Si 100%, dessiner un cercle complet au lieu d'un arc
+        if (weight >= 0.9999) {
+          return (
+            <circle
+              key={token}
+              cx="120"
+              cy="120"
+              r="100"
+              fill={colors[token]}
+              stroke="#0f172a"
+              strokeWidth="2"
+            />
+          )
+        }
+
         // Calcul des coordonnées de l'arc
         const startAngle = currentAngle
         const endAngle = currentAngle + angle
