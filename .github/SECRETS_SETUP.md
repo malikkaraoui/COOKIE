@@ -19,15 +19,15 @@ Ce document explique comment configurer les **GitHub Secrets** pour les déploie
 
 ### 🔷 Firebase (commun à tous les environnements)
 
-| Nom du Secret | Valeur | Où trouver |
-|---------------|--------|------------|
-| `VITE_FIREBASE_API_KEY` | `AIzaSyBr6MXqUHOXUJx9NpgWE9K09mk_NOnPyqs` | Firebase Console → Project Settings |
-| `VITE_FIREBASE_AUTH_DOMAIN` | `cookie-7c5b6.firebaseapp.com` | Firebase Console |
-| `VITE_FIREBASE_PROJECT_ID` | `cookie-7c5b6` | Firebase Console |
-| `VITE_FIREBASE_STORAGE_BUCKET` | `cookie-7c5b6.firebasestorage.app` | Firebase Console |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `989136449677` | Firebase Console |
-| `VITE_FIREBASE_APP_ID` | `1:989136449677:web:f84c762f9c89a60a2732c4` | Firebase Console |
-| `VITE_FIREBASE_DATABASE_URL` | `https://cookie-7c5b6-default-rtdb.firebaseio.com` | Firebase Console → Realtime Database |
+| Nom du Secret | Valeur Exemple | Où trouver |
+|---------------|----------------|------------|
+| `VITE_FIREBASE_API_KEY` | `your_firebase_api_key` | Firebase Console → Project Settings |
+| `VITE_FIREBASE_AUTH_DOMAIN` | `your_project.firebaseapp.com` | Firebase Console |
+| `VITE_FIREBASE_PROJECT_ID` | `your_project_id` | Firebase Console |
+| `VITE_FIREBASE_STORAGE_BUCKET` | `your_project.firebasestorage.app` | Firebase Console |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | `123456789012` | Firebase Console |
+| `VITE_FIREBASE_APP_ID` | `1:123456789012:web:abcdef123456` | Firebase Console |
+| `VITE_FIREBASE_DATABASE_URL` | `https://your_project-default-rtdb.firebaseio.com` | Firebase Console → Realtime Database |
 
 ---
 
@@ -91,10 +91,10 @@ Créer ces secrets avec le contenu JSON complet :
 ```json
 {
   "type": "service_account",
-  "project_id": "cookie-7c5b6",
+  "project_id": "your-project-id",
   "private_key_id": "abc123...",
   "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-  "client_email": "firebase-adminsdk-xxxxx@cookie-7c5b6.iam.gserviceaccount.com",
+  "client_email": "firebase-adminsdk-xxxxx@your-project.iam.gserviceaccount.com",
   ...
 }
 ```

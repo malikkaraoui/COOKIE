@@ -26,10 +26,10 @@
 cp .env .env.backup
 
 # Créer nouveau fichier development
-cp .env.development.example .env.development
+cp .env.development.example config/credentials/.env.development
 
-# Éditer .env.development avec VOS clés testnet
-code .env.development
+# Éditer config/credentials/.env.development avec VOS clés testnet
+code config/credentials/.env.development
 ```
 
 ### 2️⃣ Obtenir clés API Hyperliquid Testnet
@@ -39,7 +39,7 @@ code .env.development
 3. Aller dans **Account** → **API Keys**
 4. Cliquer **Create New API Key**
 5. Copier `API Key` et `API Secret`
-6. Coller dans `.env.development` :
+6. Coller dans `config/credentials/.env.development` :
 ```bash
 VITE_HYPERLIQUID_API_KEY=votre_clé_testnet
 VITE_HYPERLIQUID_API_SECRET=votre_secret_testnet

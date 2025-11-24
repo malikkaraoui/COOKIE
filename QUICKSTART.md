@@ -14,12 +14,12 @@
 
 **Pour développement local** :
 ```bash
-cp .env.development.example .env.development
+cp .env.development.example config/credentials/.env.development
 ```
 
 **Pour staging** :
 ```bash
-cp .env.example .env.staging
+cp .env.example config/credentials/.env.staging
 ```
 
 **Pour production** :
@@ -43,9 +43,9 @@ cp .env.example .env.staging
 3. Utiliser UNIQUEMENT en CI/CD (GitHub Secrets)
 4. Jamais stocker localement
 
-### 3️⃣ Remplir le fichier `.env.development`
+### 3️⃣ Remplir le fichier `config/credentials/.env.development`
 
-Éditer `.env.development` et remplacer :
+Éditer `config/credentials/.env.development` et remplacer :
 ```bash
 VITE_HYPERLIQUID_API_KEY=YOUR_TESTNET_KEY_HERE
 VITE_HYPERLIQUID_API_SECRET=YOUR_TESTNET_SECRET_HERE
