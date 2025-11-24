@@ -351,7 +351,7 @@ export default function LaMarmite() {
             fontSize: '14px',
             fontWeight: '600'
           }}>
-            ✅ Vote enregistré ! Merci pour votre participation. Vous ne pouvez voter qu'une seule fois par question.
+            ✅ Vote enregistré ! Merci !
           </div>
         )}
       </div>
