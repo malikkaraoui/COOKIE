@@ -51,10 +51,23 @@ export default function LaMarmite() {
     return `${h}h ${m}m ${s}s`
   }
 
-  const handleVote = async (choice) => {
+  const handleSelectVote = (choice) => {
+    // Permettre de changer de sélection tant qu'on n'a pas validé
+    if (!hasVoted) {
+      setSelectedVote(choice)
+      setShowLoginPrompt(false)
+    }
+  }
+
+  const handleConfirmVote = async () => {
     // Vérifier si l'utilisateur est connecté
     if (!user) {
       setShowLoginPrompt(true)
+      return
+    }
+
+    // Vérifier qu'un choix est sélectionné
+    if (!selectedVote) {
       return
     }
 
@@ -62,9 +75,8 @@ export default function LaMarmite() {
     
     try {
       // Sauvegarder le vote dans Firebase
-      await saveUserVote(user.uid, questionId, choice)
+      await saveUserVote(user.uid, questionId, selectedVote)
       
-      setSelectedVote(choice)
       setHasVoted(true)
       setShowLoginPrompt(false)
     } catch (error) {
@@ -208,8 +220,8 @@ export default function LaMarmite() {
 
           {/* Option 1 - Prudent */}
           <button
-            onClick={() => handleVote('prudent')}
-            disabled={hasVoted || isLoading}
+            onClick={() => handleSelectVote('prudent')}
+            disabled={hasVoted}
             style={{
               background: selectedVote === 'prudent' 
                 ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
@@ -217,16 +229,16 @@ export default function LaMarmite() {
               border: selectedVote === 'prudent' ? '2px solid #22c55e' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: (hasVoted || isLoading) ? 'not-allowed' : 'pointer',
+              cursor: hasVoted ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               opacity: hasVoted && selectedVote !== 'prudent' ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -248,8 +260,8 @@ export default function LaMarmite() {
 
           {/* Option 2 - Risqué */}
           <button
-            onClick={() => handleVote('risque')}
-            disabled={hasVoted || isLoading}
+            onClick={() => handleSelectVote('risque')}
+            disabled={hasVoted}
             style={{
               background: selectedVote === 'risque' 
                 ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
@@ -257,16 +269,16 @@ export default function LaMarmite() {
               border: selectedVote === 'risque' ? '2px solid #ef4444' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: (hasVoted || isLoading) ? 'not-allowed' : 'pointer',
+              cursor: hasVoted ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               opacity: hasVoted && selectedVote !== 'risque' ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -287,6 +299,45 @@ export default function LaMarmite() {
           </button>
         </div>
 
+        {/* Bouton de validation */}
+        {!hasVoted && (
+          <button
+            onClick={handleConfirmVote}
+            disabled={!selectedVote || isLoading}
+            style={{
+              marginTop: '24px',
+              width: '100%',
+              padding: '20px',
+              background: selectedVote && !isLoading
+                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+                : 'linear-gradient(135deg, #475569 0%, #334155 100%)',
+              border: 'none',
+              borderRadius: '16px',
+              color: '#fff',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              cursor: selectedVote && !isLoading ? 'pointer' : 'not-allowed',
+              transition: 'all 0.3s ease',
+              opacity: !selectedVote || isLoading ? 0.5 : 1,
+              boxShadow: selectedVote && !isLoading ? '0 8px 24px rgba(59, 130, 246, 0.3)' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (selectedVote && !isLoading) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.4)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (selectedVote && !isLoading) {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(59, 130, 246, 0.3)'
+              }
+            }}
+          >
+            {isLoading ? '⏳ Enregistrement...' : '✅ Valider mon vote'}
+          </button>
+        )}
+
         {/* Confirmation vote */}
         {hasVoted && user && (
           <div style={{
@@ -300,24 +351,7 @@ export default function LaMarmite() {
             fontSize: '14px',
             fontWeight: '600'
           }}>
-            ✅ Vote enregistré ! Merci pour votre participation.
-          </div>
-        )}
-
-        {/* Loading */}
-        {isLoading && (
-          <div style={{
-            marginTop: '24px',
-            padding: '16px',
-            background: 'rgba(59, 130, 246, 0.1)',
-            border: '1px solid #3b82f6',
-            borderRadius: '12px',
-            color: '#3b82f6',
-            textAlign: 'center',
-            fontSize: '14px',
-            fontWeight: '600'
-          }}>
-            ⏳ Enregistrement du vote...
+            ✅ Vote enregistré ! Merci pour votre participation. Vous ne pouvez voter qu'une seule fois par question.
           </div>
         )}
       </div>
