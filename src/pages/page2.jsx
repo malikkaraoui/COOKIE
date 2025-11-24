@@ -1,21 +1,66 @@
 /**
  * Ma Cuisine - Simulateur de Portfolio Crypto
  * Ajustez vos allocations et visualisez les performances
+ * Utilise les tokens sélectionnés avec leurs variations 24h comme APY
  */
 
-import { useState } from 'react'
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
+import { ShoppingBasket } from 'lucide-react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
 import PortfolioResults from '../elements/PortfolioResults'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
+import { useMarketData } from '../context/MarketDataContext'
+import { useBinancePrices } from '../hooks/useBinancePrices'
+
+// Couleurs par token
+const TOKEN_COLORS = {
+  BTC: '#f7931a',
+  ETH: '#627eea',
+  SOL: '#14f195',
+  BNB: '#f3ba2f',
+  DOGE: '#c2a633',
+  MATIC: '#8247e5',
+  kPEPE: '#4caf50',
+  AVAX: '#e84142',
+  ATOM: '#2e3148',
+  APT: '#00bfff'
+}
 
 export default function Page2() {
   const { selectedTokens, removeToken, count } = useSelectedTokens()
   const { user } = useAuth()
+  const { getToken } = useMarketData()
+  const binancePrices = useBinancePrices()
   
-  // Simulateur de portfolio
+  // Récupérer les données des tokens sélectionnés avec deltaPct
+  const tokensData = useMemo(() => {
+    return selectedTokens.map(symbolWithSource => {
+      const [symbol, source] = symbolWithSource.includes(':') 
+        ? symbolWithSource.split(':') 
+        : [symbolWithSource, 'hyperliquid']
+      
+      // Récupérer deltaPct selon la source
+      let tokenData
+      if (source === 'binance') {
+        tokenData = binancePrices[symbol] || { deltaPct: 0 }
+      } else {
+        tokenData = getToken(symbol)
+      }
+      
+      return {
+        symbol,
+        source,
+        deltaPct: tokenData.deltaPct || 0,
+        color: TOKEN_COLORS[symbol] || '#666'
+      }
+    })
+  }, [selectedTokens, binancePrices, getToken])
+  
+  // Simulateur de portfolio avec tokens dynamiques
   const {
     capitalInitial,
     setCapitalInitial,
@@ -23,15 +68,7 @@ export default function Page2() {
     setWeight,
     resetWeights,
     results
-  } = usePortfolioSimulation(1000)
-
-  // Couleurs par token
-  const tokenColors = {
-    BTC: '#F7931A',
-    ETH: '#627EEA',
-    SOL: '#14F195',
-    DOGE: '#C3A634'
-  }
+  } = usePortfolioSimulation(1000, tokensData)
 
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -51,6 +88,46 @@ export default function Page2() {
         </p>
       </div>
 
+      {/* Message si aucun token */}
+      {tokensData.length === 0 ? (
+        <div style={{
+          padding: '60px 40px',
+          textAlign: 'center',
+          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+          borderRadius: '24px',
+          border: '2px dashed #334155'
+        }}>
+          <div style={{ fontSize: '64px', marginBottom: '16px' }}>🛒</div>
+          <h2 style={{ color: '#e5e7eb', fontSize: '24px', marginBottom: '12px' }}>
+            Aucun token dans votre cuisine
+          </h2>
+          <p style={{ color: '#94a3b8', fontSize: '16px', marginBottom: '24px' }}>
+            Ajoutez des tokens depuis l'Épicerie fine pour commencer à simuler votre portfolio
+          </p>
+          <Link
+            to="/ÉpicerieFine"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 24px',
+              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+              color: '#fff',
+              borderRadius: '12px',
+              textDecoration: 'none',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'transform 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+          >
+            <ShoppingBasket size={20} />
+            Aller à l'Épicerie fine
+          </Link>
+        </div>
+      ) : (
+        <>
       {/* Capital Initial Slider */}
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -140,14 +217,14 @@ export default function Page2() {
           </button>
         </div>
 
-        {/* Sliders */}
-        {Object.keys(weights).map(token => (
+        {/* Sliders dynamiques */}
+        {tokensData.map(token => (
           <TokenWeightSlider
-            key={token}
-            symbol={token}
-            weight={weights[token]}
-            onChange={(newWeight) => setWeight(token, newWeight)}
-            color={tokenColors[token]}
+            key={token.symbol}
+            symbol={token.symbol}
+            weight={weights[token.symbol] || 0}
+            onChange={(newWeight) => setWeight(token.symbol, newWeight)}
+            color={token.color}
           />
         ))}
 
@@ -200,24 +277,24 @@ export default function Page2() {
         }}>
           {/* Pie Chart */}
           <svg width="240" height="240" viewBox="0 0 240 240">
-            <PieChart weights={weights} colors={tokenColors} />
+            <PieChart weights={weights} tokensData={tokensData} />
           </svg>
 
           {/* Légende */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {Object.keys(weights).map(token => (
-              <div key={token} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            {tokensData.map(token => (
+              <div key={token.symbol} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{
                   width: '20px',
                   height: '20px',
                   borderRadius: '4px',
-                  background: tokenColors[token]
+                  background: token.color
                 }} />
                 <span style={{ color: '#e5e7eb', fontSize: '14px', fontWeight: '600' }}>
-                  {token}
+                  {token.symbol}
                 </span>
                 <span style={{ color: '#94a3b8', fontSize: '14px' }}>
-                  {(weights[token] * 100).toFixed(1)}%
+                  {((weights[token.symbol] || 0) * 100).toFixed(1)}%
                 </span>
               </div>
             ))}
@@ -287,13 +364,14 @@ export default function Page2() {
           </div>
         </div>
       )}
+        </>
+      )}
     </div>
   )
 }
 
 // Composant Pie Chart SVG
-function PieChart({ weights, colors }) {
-  const tokens = Object.keys(weights)
+function PieChart({ weights, tokensData }) {
   let currentAngle = -90 // Commencer en haut
 
   return (
@@ -302,8 +380,8 @@ function PieChart({ weights, colors }) {
       <circle cx="120" cy="120" r="100" fill="#0f172a" />
       
       {/* Slices */}
-      {tokens.map(token => {
-        const weight = weights[token]
+      {tokensData.map(token => {
+        const weight = weights[token.symbol] || 0
         const angle = weight * 360
         
         if (weight === 0) return null
@@ -312,11 +390,11 @@ function PieChart({ weights, colors }) {
         if (weight >= 0.9999) {
           return (
             <circle
-              key={token}
+              key={token.symbol}
               cx="120"
               cy="120"
               r="100"
-              fill={colors[token]}
+              fill={token.color}
               stroke="#0f172a"
               strokeWidth="2"
             />
@@ -347,9 +425,9 @@ function PieChart({ weights, colors }) {
 
         return (
           <path
-            key={token}
+            key={token.symbol}
             d={pathData}
-            fill={colors[token]}
+            fill={token.color}
             stroke="#0f172a"
             strokeWidth="2"
           />

@@ -1,35 +1,32 @@
 /**
  * Hook de simulation de portfolio crypto
  * Calcule APY pondéré, valeur finale, profit selon poids et capital
+ * Utilise les tokens sélectionnés avec leurs deltaPct comme APY
  */
 
-import { useState } from 'react'
-
-// APY fixes par token (simulation)
-const TOKEN_APY = {
-  BTC: 0.15,   // 15%
-  ETH: 0.20,   // 20%
-  SOL: 0.35,   // 35%
-  DOGE: -0.10  // -10%
-}
+import { useState, useMemo } from 'react'
 
 /**
- * Hook de simulation de portfolio
+ * Hook de simulation de portfolio dynamique
  * @param {number} initialCapital - Capital de départ en $
- * @param {Object} initialWeights - Poids initiaux { BTC: 0.25, ETH: 0.40, ... }
- * @returns {Object} { weights, setWeight, capitalInitial, setCapitalInitial, results }
+ * @param {Array} tokensData - Tableau de { symbol, deltaPct } depuis les tokens sélectionnés
+ * @returns {Object} { weights, setWeight, capitalInitial, setCapitalInitial, results, tokensData }
  */
-export function usePortfolioSimulation(initialCapital = 1000, initialWeights = null) {
-  // Poids par défaut équilibrés (25% chacun)
-  const defaultWeights = {
-    BTC: 0.25,
-    ETH: 0.25,
-    SOL: 0.25,
-    DOGE: 0.25
-  }
-
+export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
   const [capitalInitial, setCapitalInitial] = useState(initialCapital)
-  const [weights, setWeights] = useState(initialWeights || defaultWeights)
+
+  // Initialiser les poids équitablement selon le nombre de tokens
+  const initialWeights = useMemo(() => {
+    if (tokensData.length === 0) return {}
+    
+    const equalWeight = 1 / tokensData.length
+    return tokensData.reduce((acc, token) => {
+      acc[token.symbol] = equalWeight
+      return acc
+    }, {})
+  }, [tokensData])
+
+  const [weights, setWeights] = useState(initialWeights)
 
   /**
    * Ajuste un poids et redistribue proportionnellement sur les autres
@@ -41,7 +38,7 @@ export function usePortfolioSimulation(initialCapital = 1000, initialWeights = n
     const boundedWeight = Math.max(0, Math.min(1, newWeight))
 
     // Calculer la différence
-    const oldWeight = weights[token]
+    const oldWeight = weights[token] || 0
     const diff = boundedWeight - oldWeight
 
     // Si pas de changement, sortir
@@ -85,11 +82,11 @@ export function usePortfolioSimulation(initialCapital = 1000, initialWeights = n
    * Réinitialiser les poids à l'équilibre
    */
   const resetWeights = () => {
-    setWeights(defaultWeights)
+    setWeights(initialWeights)
   }
 
   // Calculs dérivés
-  const results = calculateResults(capitalInitial, weights)
+  const results = calculateResults(capitalInitial, weights, tokensData)
 
   return {
     capitalInitial,
@@ -97,7 +94,8 @@ export function usePortfolioSimulation(initialCapital = 1000, initialWeights = n
     weights,
     setWeight,
     resetWeights,
-    results
+    results,
+    tokensData
   }
 }
 
@@ -105,13 +103,33 @@ export function usePortfolioSimulation(initialCapital = 1000, initialWeights = n
  * Calcule les métriques du portfolio
  * @param {number} capital - Capital initial
  * @param {Object} weights - Poids par token
+ * @param {Array} tokensData - Données des tokens avec deltaPct
  * @returns {Object} { apyMoyen, valeurFinale, profit, rendementPct }
  */
-function calculateResults(capital, weights) {
+function calculateResults(capital, weights, tokensData) {
+  // Guard si tokensData n'est pas un tableau
+  if (!Array.isArray(tokensData) || tokensData.length === 0) {
+    return {
+      apyMoyen: 0,
+      apyMoyenPct: 0,
+      valeurFinale: capital,
+      profit: 0,
+      rendementPct: 0
+    }
+  }
+
+  // Créer un map symbol -> deltaPct pour accès rapide
+  const apyMap = tokensData.reduce((acc, token) => {
+    // deltaPct est déjà en %, on le convertit en décimal
+    // Ex: +5% → 0.05
+    acc[token.symbol] = (token.deltaPct || 0) / 100
+    return acc
+  }, {})
+
   // APY moyen pondéré
-  const apyMoyen = Object.keys(weights).reduce((sum, token) => {
-    const apy = TOKEN_APY[token] || 0
-    return sum + (weights[token] * apy)
+  const apyMoyen = Object.keys(weights).reduce((sum, symbol) => {
+    const apy = apyMap[symbol] || 0
+    return sum + (weights[symbol] * apy)
   }, 0)
 
   // Valeur finale après 1 an
@@ -133,18 +151,13 @@ function calculateResults(capital, weights) {
 }
 
 /**
- * Récupère l'APY d'un token
- * @param {string} token - Symbole du token
- * @returns {number} APY (ex: 0.15 pour 15%)
+ * Récupère l'APY d'un token depuis tokensData
+ * @param {Array} tokensData - Données des tokens
+ * @param {string} symbol - Symbole du token
+ * @returns {number} APY en % (ex: 5 pour 5%)
  */
-export function getTokenAPY(token) {
-  return TOKEN_APY[token] || 0
-}
-
-/**
- * Récupère tous les APY
- * @returns {Object} { BTC: 0.15, ... }
- */
-export function getAllAPY() {
-  return { ...TOKEN_APY }
+export function getTokenAPY(tokensData, symbol) {
+  if (!Array.isArray(tokensData)) return 0
+  const token = tokensData.find(t => t.symbol === symbol)
+  return token?.deltaPct || 0
 }
