@@ -3,10 +3,7 @@
  * Affiche le symbole, APY, et slider horizontal 0-100%
  */
 
-import { getTokenAPY } from '../hooks/usePortfolioSimulation'
-
-export default function TokenWeightSlider({ symbol, weight, onChange, disabled = false, color }) {
-  const apy = getTokenAPY(symbol)
+export default function TokenWeightSlider({ symbol, weight, onChange, disabled = false, color, apy = 0 }) {
   const weightPct = (weight * 100).toFixed(1)
 
   const handleChange = (e) => {
@@ -37,14 +34,14 @@ export default function TokenWeightSlider({ symbol, weight, onChange, disabled =
           fontSize: '12px',
           fontWeight: '600'
         }}>
-          APY: {apy >= 0 ? '+' : ''}{(apy * 100).toFixed(0)}%
+          APY: {apy >= 0 ? '+' : ''}{apy.toFixed(1)}%
         </div>
       </div>
 
       {/* Slider */}
       <input
         type="range"
-        min="0"
+        min="1"
         max="100"
         step="0.1"
         value={weight * 100}

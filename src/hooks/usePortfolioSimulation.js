@@ -34,11 +34,12 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
    * @param {number} newWeight - Nouveau poids (0-1)
    */
   const setWeight = (token, newWeight) => {
-    // Borner entre 0 et 1
-    const boundedWeight = Math.max(0, Math.min(1, newWeight))
+    // Borner entre 0.01 (1%) et 1 (100%)
+    const MIN_WEIGHT = 0.01
+    const boundedWeight = Math.max(MIN_WEIGHT, Math.min(1, newWeight))
 
     // Calculer la différence
-    const oldWeight = weights[token] || 0
+    const oldWeight = weights[token] || MIN_WEIGHT
     const diff = boundedWeight - oldWeight
 
     // Si pas de changement, sortir
@@ -51,17 +52,17 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
     // Nouveau state
     const newWeights = { ...weights, [token]: boundedWeight }
 
-    // Redistribuer proportionnellement sur les autres
+    // Redistribuer proportionnellement sur les autres (avec minimum 1%)
     if (otherWeightsSum > 0) {
       otherTokens.forEach(t => {
         const proportion = weights[t] / otherWeightsSum
         const adjustment = -diff * proportion
-        newWeights[t] = Math.max(0, weights[t] + adjustment)
+        newWeights[t] = Math.max(MIN_WEIGHT, weights[t] + adjustment)
       })
     } else {
-      // Si tous les autres sont à 0, répartir équitablement
+      // Si tous les autres sont à 0, répartir équitablement (minimum 1%)
       const remainingWeight = 1 - boundedWeight
-      const equalShare = remainingWeight / otherTokens.length
+      const equalShare = Math.max(MIN_WEIGHT, remainingWeight / otherTokens.length)
       otherTokens.forEach(t => {
         newWeights[t] = equalShare
       })

@@ -1,12 +1,9 @@
 /**
  * Ma Cuisine - Simulateur de Portfolio Crypto
  * Ajustez vos allocations et visualisez les performances
- * Utilise les tokens sélectionnés avec leurs variations 24h comme APY
  */
 
 import { useMemo } from 'react'
-import { Link } from 'react-router-dom'
-import { ShoppingBasket } from 'lucide-react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
 import PortfolioResults from '../elements/PortfolioResults'
@@ -14,7 +11,6 @@ import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
-import { useBinancePrices } from '../hooks/useBinancePrices'
 
 // Couleurs par token
 const TOKEN_COLORS = {
@@ -34,33 +30,25 @@ export default function Page2() {
   const { selectedTokens, removeToken, count } = useSelectedTokens()
   const { user } = useAuth()
   const { getToken } = useMarketData()
-  const binancePrices = useBinancePrices()
   
-  // Récupérer les données des tokens sélectionnés avec deltaPct
+  // Créer tokensData à partir des tokens sélectionnés
   const tokensData = useMemo(() => {
     return selectedTokens.map(symbolWithSource => {
-      const [symbol, source] = symbolWithSource.includes(':') 
+      const [symbol] = symbolWithSource.includes(':') 
         ? symbolWithSource.split(':') 
         : [symbolWithSource, 'hyperliquid']
       
-      // Récupérer deltaPct selon la source
-      let tokenData
-      if (source === 'binance') {
-        tokenData = binancePrices[symbol] || { deltaPct: 0 }
-      } else {
-        tokenData = getToken(symbol)
-      }
+      const tokenData = getToken(symbol)
       
       return {
         symbol,
-        source,
-        deltaPct: tokenData.deltaPct || 0,
+        deltaPct: tokenData?.deltaPct || 0,
         color: TOKEN_COLORS[symbol] || '#666'
       }
     })
-  }, [selectedTokens, binancePrices, getToken])
+  }, [selectedTokens, getToken])
   
-  // Simulateur de portfolio avec tokens dynamiques
+  // Simulateur de portfolio avec les tokens dynamiques
   const {
     capitalInitial,
     setCapitalInitial,
@@ -88,46 +76,6 @@ export default function Page2() {
         </p>
       </div>
 
-      {/* Message si aucun token */}
-      {tokensData.length === 0 ? (
-        <div style={{
-          padding: '60px 40px',
-          textAlign: 'center',
-          background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-          borderRadius: '24px',
-          border: '2px dashed #334155'
-        }}>
-          <div style={{ fontSize: '64px', marginBottom: '16px' }}>🛒</div>
-          <h2 style={{ color: '#e5e7eb', fontSize: '24px', marginBottom: '12px' }}>
-            Aucun token dans votre cuisine
-          </h2>
-          <p style={{ color: '#94a3b8', fontSize: '16px', marginBottom: '24px' }}>
-            Ajoutez des tokens depuis l'Épicerie fine pour commencer à simuler votre portfolio
-          </p>
-          <Link
-            to="/ÉpicerieFine"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 24px',
-              background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-              color: '#fff',
-              borderRadius: '12px',
-              textDecoration: 'none',
-              fontSize: '16px',
-              fontWeight: '600',
-              transition: 'transform 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-          >
-            <ShoppingBasket size={20} />
-            Aller à l'Épicerie fine
-          </Link>
-        </div>
-      ) : (
-        <>
       {/* Capital Initial Slider */}
       <div style={{
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
@@ -225,6 +173,7 @@ export default function Page2() {
             weight={weights[token.symbol] || 0}
             onChange={(newWeight) => setWeight(token.symbol, newWeight)}
             color={token.color}
+            apy={token.deltaPct}
           />
         ))}
 
@@ -363,8 +312,6 @@ export default function Page2() {
             })}
           </div>
         </div>
-      )}
-        </>
       )}
     </div>
   )
