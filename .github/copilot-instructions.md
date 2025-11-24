@@ -1,20 +1,85 @@
-# 🍪 COOKIE - Instructions Copilot
+# 🍪 COOKIE - Instructions GitHub Copilot
 
-## Vue d'ensemble
+**Application React** de trading crypto multi-sources avec Firebase.
 
-Application React de trading crypto avec **architecture dual-source** :
-- **Hyperliquid API** : 10 tokens (BTC, ETH, SOL, BNB, MATIC, kPEPE, AVAX, ATOM, APT, ARB)
-- **Binance Spot API** : BNB + tokens BEP-20 (extensible)
-- **Firebase Realtime Database** : Cache prix + auth utilisateurs
-- **Drag & Drop** : Sélection tokens personnalisée
+---
+
+## 📋 Architecture Projet
+
+### Stack Technique
+- **Frontend** : React 19 + Vite + TailwindCSS
+- **APIs** : Hyperliquid (10 tokens) + Binance Spot (BNB + BEP-20)
+- **Backend** : Firebase Realtime Database + Firebase Auth
+- **État** : Context API (providers)
+
+### Sources de Données
+
+| Source | Usage | Tokens |
+|--------|-------|--------|
+| **Hyperliquid API** | Prix crypto temps réel | BTC, ETH, SOL, BNB, MATIC, kPEPE, AVAX, ATOM, APT, ARB |
+| **Binance Spot API** | Prix BNB + tokens BEP-20 | BNB, CAKE, DOGE, SHIB, etc. |
+| **Firebase RTDB** | Cache prix + auth users | Tous |
+
+⚠️ **NOWNodes/BSC** : Uniquement balances on-chain, JAMAIS pour prix de marché.
 
 ---
 
 ## 🎯 Règles d'Architecture STRICTES
 
-### App.jsx = MINIMAL (< 50 lignes)
+### 1. Structure Dossiers
+
+```
+src/
+├── providers/          # Context providers (état global, polling API)
+├── context/            # Legacy contexts (à migrer vers providers/)
+├── hooks/              # Hooks réutilisables (logique locale)
+├── lib/                # Logique métier + services API
+│   ├── database/       # Firebase services
+│   └── binance/        # Binance client
+├── config/             # Configuration (tokens, API keys)
+├── components/         # Layouts globaux (Sidebar, Topbar)
+├── elements/           # Composants UI réutilisables
+└── pages/              # Pages routing
+```
+
+### 2. Convention Providers vs Hooks
+
+**Providers** (`src/providers/`) :
+- État **global** partagé dans toute l'app
+- Wrappent `<App>` dans `main.jsx`
+- Contiennent Context + Provider + state management
+- Exemples : Polling API, authentification, navigation
+
+**Hooks** (`src/hooks/`) :
+- Logique **locale** pour composants individuels
+- Appelés directement dans composants
+- Retournent données/fonctions (pas de Context)
+- Exemples : Lecture Context, logique UI, side effects locaux
+
 ```jsx
-// ✅ BON : Uniquement composition + init
+// ✅ BON : Provider pour état global
+export function MarketDataProvider({ children }) {
+  const [tokens, setTokens] = useState({})
+  // Polling global...
+  return <MarketDataContext.Provider value={{ tokens }}>{children}</MarketDataContext.Provider>
+}
+
+// ✅ BON : Hook pour consommer
+export function useToken(symbol) {
+  const { tokens } = useContext(MarketDataContext)
+  return tokens[symbol]
+}
+
+// ❌ MAUVAIS : Hook avec polling global
+export function usePrices() {
+  useEffect(() => { setInterval(...) }, []) // Side effect global
+}
+```
+
+### 3. App.jsx = MINIMAL (< 50 lignes)
+
+```jsx
+// ✅ Uniquement composition + init
 export default function App() {
   useEffect(() => {
     initializePriceNodes()
@@ -29,92 +94,37 @@ export default function App() {
     </MarketDataProvider>
   )
 }
-
-// ❌ MAUVAIS : Logique métier dans App.jsx
 ```
-
-### Séparation des Responsabilités
-
-| Type de Logique | Emplacement | Exemple |
-|----------------|-------------|---------|
-| **Providers (Context global)** | `src/providers/` ⚠️ TODO | `MarketDataProvider.jsx`, `BinanceProvider.jsx`, `SelectedTokensProvider.jsx` |
-| **Context (À migrer)** | `src/context/` | `MarketDataContext.jsx`, `SelectedTokensContext.jsx`, `NavigationContext.jsx` |
-| **Hooks (Logique locale)** | `src/hooks/` | `useToken.js`, `useDraggable.js`, `useResizablePanel.js` |
-| Métier / API | `src/lib/` | `priceCalculations.js`, `binanceClient.js` |
-| Configuration | `src/config/` | `tokenList.js`, `binanceConfig.js` |
-| Composants UI | `src/elements/` | `TokenTile.jsx` |
-| Layouts globaux | `src/components/` | `Topbar.jsx`, `Sidebar.jsx` |
-| Pages routing | `src/pages/` | `page1.jsx`, `page2.jsx`, `page4.jsx` |
-
-**Note** : Migration `/context` → `/providers` planifiée mais non effectuée pour éviter régressions.
-
-### 🔄 Convention Providers vs Hooks
-
-**Providers (`src/providers/`)** :
-- État **global** partagé dans toute l'application
-- Wrappent l'arborescence React dans `App.jsx`
-- Contiennent Context + Provider + logique de state management
-- Exemples : Polling API, authentification, navigation globale
-
-**Hooks (`src/hooks/`)** :
-- Logique **réutilisable locale** pour composants individuels
-- Appelés directement dans les composants
-- Retournent données/fonctions sans créer de Context
-- Exemples : Lecture données depuis Context, logique UI, side effects locaux
-
-```jsx
-// ✅ BON : Provider pour état global
-// src/providers/MarketDataProvider.jsx
-export function MarketDataProvider({ children }) {
-  const [tokens, setTokens] = useState({})
-  // Polling API global...
-  return <MarketDataContext.Provider value={{ tokens }}>{children}</MarketDataContext.Provider>
-}
-
-// ✅ BON : Hook pour consommer le provider
-// src/hooks/useToken.js
-export function useToken(symbol) {
-  const { tokens } = useContext(MarketDataContext)
-  return tokens[symbol]
-}
-
-// ❌ MAUVAIS : Hook qui fait du polling global
-// src/hooks/useBinancePrices.js (doit être un Provider)
-export function useBinancePrices() {
-  useEffect(() => { setInterval(...) }, []) // ❌ Side effect global
-}
-```
-
-### Convention Routing (URLs)
-- **PascalCase obligatoire** : `/MarmitonCommunautaire`, `/MaCuisine`, `/BinanceToken`
-- **Descriptif et explicite** : Pas de `/page1`, `/page2` (générique)
-- **Synchronisé avec labels Sidebar** : URL = même wording que menu
-- **Documentation** : Voir `docs/ROUTING.md` pour détails complets
 
 ---
 
-## 🔥 Firebase - ARCHITECTURE DUAL-SOURCE
+## 🔥 Firebase - Architecture Dual-Source
 
-### Structure Base de Données
+### Structure Realtime Database
+
 ```
-/priceTokenHyper/{coin}/     ← Hyperliquid (BTC, ETH, SOL, BNB*, etc.)
-/priceTokenBinance/{coin}/   ← Binance (BNB uniquement pour l'instant)
-/users/{uid}/selectedTokens  ← Tokens sélectionnés par utilisateur
+/priceTokenHyper/{coin}/     ← Hyperliquid (BTC, ETH, SOL...)
+  price: number
+  prevDayPx: number
+  deltaAbs: number
+  deltaPct: number
+
+/priceTokenBinance/{coin}/   ← Binance (BNB uniquement)
+  price: number
+  prevDayPx: number
+  deltaAbs: number
+  deltaPct: number
+
+/users/{uid}/selectedTokens  ← Tokens sélectionnés par user
 ```
 
-**BNB = SEUL token dans les DEUX sources**
-
-### Import Paths depuis lib/database/
-```javascript
-// ❌ ERREUR
-import { db } from '../config/firebase'
-
-// ✅ CORRECT
-import { db } from '../../config/firebase'
-```
+**BNB = SEUL token dans les DEUX sources.**
 
 ### Services Firebase
+
 ```javascript
+// lib/database/priceCache.js
+
 // Hyperliquid → priceTokenHyper
 setCachedPriceHyper(coin, { price, prevDayPx, deltaAbs, deltaPct })
 
@@ -122,43 +132,121 @@ setCachedPriceHyper(coin, { price, prevDayPx, deltaAbs, deltaPct })
 setCachedPriceBinance(coin, { price, prevDayPx, deltaAbs, deltaPct })
 ```
 
----
+### Import Paths
 
-## ⚠️ ANTI-PATTERNS CRITIQUES
-
-### NOWNodes/BSC = ON-CHAIN ONLY
-```
-❌ NE JAMAIS utiliser NOWNodes pour prix de marché
-✅ NOWNodes = balances on-chain, smart contracts, transactions
-✅ Prix de marché = Binance Spot API ou Hyperliquid API
-
-Historique : Tentative NOWNodes pour prix → supprimée complètement
-```
-
-### Pas de Clés API Côté Client
 ```javascript
-// ❌ INTERDIT
-const BINANCE_KEY = 'abc123'
+// ❌ ERREUR
+import { db } from '../config/firebase'
 
-// ✅ CORRECT (.env.local)
-const config = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY
-}
+// ✅ CORRECT (depuis lib/database/)
+import { db } from '../../config/firebase'
 ```
 
 ---
 
-## 🧩 Patterns de Code
+## 🌐 APIs - Règles d'Utilisation
 
-### Hooks pour Logique Réutilisable
+### Binance Spot API (Prix de Marché)
+
+**Base URL** : `https://api.binance.com`
+
+**Endpoints** :
+```javascript
+// Prix actuel
+GET /api/v3/ticker/price?symbol=BNBUSDT
+
+// Prix + variation 24h
+GET /api/v3/ticker/24hr?symbol=BNBUSDT
+```
+
+**Client** : `src/lib/binance/binanceClient.js`
+
+### Hyperliquid API
+
+**Base URL** : `https://api.hyperliquid.xyz/info`
+
+**Méthode** : POST avec body JSON
+
+```javascript
+// OrderBook L2
+{ "type": "l2Book", "coin": "BTC" }
+
+// Stats 24h
+{ "type": "metaAndAssetCtxs" }
+```
+
+**Client** : `src/lib/hlEndpoints.js`
+
+### NOWNodes/BSC (⚠️ ON-CHAIN UNIQUEMENT)
+
+**Base URL** : `https://bsc.nownodes.io`
+
+**Usage STRICT** :
+- ✅ Balances on-chain (`eth_getBalance`)
+- ✅ Transactions (`eth_getTransactionByHash`)
+- ✅ Token balances (via smart contracts)
+- ❌ **JAMAIS** pour prix de marché
+
+---
+
+## 🔐 Environnements Multi-Branches
+
+### Structure
+
+| Environnement | Branche | Fichier `.env` | Hyperliquid | Argent |
+|---------------|---------|----------------|-------------|--------|
+| Development | `dev` | `config/credentials/.env.development` | Testnet | Faux 🧪 |
+| Staging | `release` | `config/credentials/.env.staging` | Testnet | Faux 🧪 |
+| Production | `main` | `config/credentials/.env.production` | Mainnet | Vrai ⚠️ |
+
+### Variables d'Environnement
+
+```bash
+# Firebase (partagé)
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_DATABASE_URL=
+
+# Hyperliquid (différent par env)
+VITE_HYPERLIQUID_API_URL=        # testnet vs mainnet
+VITE_HYPERLIQUID_API_KEY=
+VITE_HYPERLIQUID_API_SECRET=
+
+# Binance (partagé)
+VITE_BINANCE_API_URL=https://api.binance.com
+
+# Debug
+VITE_ENABLE_DEBUG_LOGS=          # true dev, false prod
+VITE_ENVIRONMENT=                # development|staging|production
+```
+
+### Sécurité
+
+**JAMAIS commit** :
+- ❌ `config/credentials/.env.development`, `config/credentials/.env.staging`, `config/credentials/.env.production`
+- ❌ Clés API en clair dans code
+- ❌ Credentials dans fichiers `.example`
+
+**TOUJOURS** :
+- ✅ Utiliser `import.meta.env.VITE_*`
+- ✅ Clés dans `.env.*` (gitignorés)
+- ✅ Placeholders dans `.env.example`
+
+---
+
+## 🛠️ Patterns de Code
+
+### Hooks UI Réutilisables
+
 ```jsx
-// ✅ Logique dans hook
+// src/hooks/useToken.js
 export function useToken(symbol) {
   const { getToken } = useMarketData()
   return getToken(symbol)
 }
 
-// ✅ Composant utilise le hook
+// Utilisation dans composant
 function TokenTile({ symbol }) {
   const { price, deltaPct } = useToken(symbol)
   return <div>{price} ({deltaPct}%)</div>
@@ -166,6 +254,7 @@ function TokenTile({ symbol }) {
 ```
 
 ### Calculs dans lib/, Pas Composants
+
 ```javascript
 // ✅ lib/priceCalculations.js
 export function calculatePriceChange(current, previous) {
@@ -175,94 +264,126 @@ export function calculatePriceChange(current, previous) {
 }
 ```
 
----
+### Convention Routing (URLs)
 
-## 📚 MCP Servers
-
-### Disponibles
-- **Figma** : Charte graphique, extraction composants
-- **Stripe** : Paiements (future feature)
-- **GitBook** : Docs Hyperliquid (https://hyperliquid.gitbook.io/hyperliquid-docs/~gitbook/mcp)
-
-### Workflow
-1. Vérifier serveur MCP démarré
-2. Consulter docs via MCP
-3. Adapter code à l'architecture du projet
+- **PascalCase obligatoire** : `/MarmitonCommunautaire`, `/MaCuisine`
+- **Descriptif** : Pas de `/page1`, `/page2`
+- **Synchronisé avec Sidebar** : URL = même label que menu
 
 ---
 
-## ✅ Checklist Code
+## ⚠️ ANTI-PATTERNS CRITIQUES
 
-- [ ] App.jsx minimal (< 50 lignes)
-- [ ] **Providers** → `src/providers/` (état global, polling API)
-- [ ] **Hooks** → `src/hooks/` (logique locale, lecture Context)
-- [ ] Logique métier → `src/lib/`
-- [ ] Import paths corrects (`../../config/firebase` depuis lib/)
-- [ ] `setCachedPriceHyper` pour Hyperliquid
-- [ ] `setCachedPriceBinance` pour Binance
-- [ ] NOWNodes JAMAIS pour prix
-- [ ] Pas clés API en dur
-- [ ] Variables d'environnement (.env.local)
-- [ ] **AUCUNE régression** après modification (tester avant commit)
-- [ ] **Code propre** : supprimer fichiers `_BACKUP`, `_OLD`, `_STEP1`
+### NOWNodes pour Prix = INTERDIT
 
----
-
-## 🐛 Erreurs Fréquentes
-
-### Import Path Error
 ```
-❌ Cannot find '../config/firebase' from lib/database/
-✅ Utiliser '../../config/firebase'
+❌ NE JAMAIS utiliser NOWNodes pour prix de marché
+✅ NOWNodes = balances on-chain, smart contracts, transactions
+✅ Prix de marché = Binance Spot API ou Hyperliquid API
 ```
 
-### Firebase Permission Denied
-```
-✅ Vérifier database.rules.json
-✅ Déployer via Firebase Console
-✅ Initialiser nœuds (initializePriceNodes)
+### Pas de Clés API Côté Client
+
+```javascript
+// ❌ INTERDIT
+const BINANCE_KEY = 'abc123'
+
+// ✅ CORRECT
+const apiKey = import.meta.env.VITE_BINANCE_API_KEY
 ```
 
-### Token Price = null
-```
-✅ Vérifier symbole dans getHyperliquidTokenSymbols()
-✅ Vérifier source: 'hyperliquid' dans tokenList.js
-✅ Ne JAMAIS envoyer tokens BSC à Hyperliquid API
+### App.jsx Minimal
+
+```jsx
+// ❌ MAUVAIS
+export default function App() {
+  const [tokens, setTokens] = useState({})
+  useEffect(() => { /* Polling API */ }, [])
+  // Logique métier...
+}
+
+// ✅ BON
+export default function App() {
+  return <MarketDataProvider><AppLayout /></MarketDataProvider>
+}
 ```
 
 ---
 
-## 🛡️ Règles de Modification du Code
+## 📝 Git Workflow - Conventional Commits
 
-### Avant TOUTE modification :
-1. **Lire le code existant** pour comprendre le contexte
-2. **Identifier les dépendances** (imports, exports, usages)
-3. **Prévoir les impacts** sur les autres fichiers
-4. **Tester mentalement** les cas limites
+### Extension VS Code
 
-### Pendant la modification :
-1. **Une seule responsabilité par commit**
-2. **Garder le code fonctionnel** à chaque étape
-3. **Mettre à jour TOUS les imports** concernés
-4. **Supprimer les fichiers obsolètes** (backups, old versions)
+**Installer** : `Conventional Commits` extension  
+**Commande** : `Ctrl+Shift+P` → `Conventional Commits`
 
-### Après la modification :
-1. **Vérifier aucune régression** (tester les fonctionnalités impactées)
-2. **Nettoyer les console.log** et code commenté
-3. **Mettre à jour la documentation** si architecture modifiée
-4. **Commit avec message descriptif**
+### Types
 
-### ⛔ Interdictions absolues :
-- ❌ Laisser du code cassé "pour plus tard"
-- ❌ Créer des fichiers `_BACKUP` ou `_OLD` (utiliser Git)
+| Type | Usage | Emoji |
+|------|-------|-------|
+| `feat` | Nouvelle fonctionnalité | ✨ |
+| `fix` | Correction bug | 🐛 |
+| `docs` | Documentation seule | 📝 |
+| `style` | CSS, formatage | 💄 |
+| `refactor` | Refactoring | ♻️ |
+| `perf` | Performance | ⚡ |
+| `chore` | Maintenance, deps | 🔧 |
+| `ci` | CI/CD | 👷 |
+
+### Scopes COOKIE
+
+`hooks`, `providers`, `context`, `components`, `elements`, `pages`, `auth`, `firebase`, `api`, `config`, `docs`
+
+### Exemples
+
+```bash
+feat(hooks): add useHover for button interactions
+fix(firebase): correct databaseURL environment variable
+docs(api): add Binance API usage guidelines
+chore(deps): update firebase to v12.6.0
+```
+
+---
+
+## 🔍 Checklist Développement
+
+**Avant toute modification** :
+- [ ] Lire code existant (contexte)
+- [ ] Identifier dépendances (imports, exports)
+- [ ] Prévoir impacts (autres fichiers)
+- [ ] Tester mentalement cas limites
+
+**Pendant modification** :
+- [ ] Une responsabilité par commit
+- [ ] Code fonctionnel à chaque étape
+- [ ] Mettre à jour tous imports
+- [ ] Supprimer fichiers obsolètes (pas de `_BACKUP`)
+
+**Après modification** :
+- [ ] Vérifier aucune régression
+- [ ] Nettoyer console.log
+- [ ] Mettre à jour docs si archi modifiée
+- [ ] Commit avec Conventional Commits
+
+**Interdictions absolues** :
+- ❌ Laisser code cassé
+- ❌ Créer fichiers `_BACKUP`, `_OLD` (utiliser Git)
 - ❌ Modifier sans tester
-- ❌ Casser une feature pour en ajouter une autre
-- ❌ Ignorer les erreurs TypeScript/ESLint
+- ❌ Casser feature pour en ajouter une autre
+- ❌ Ignorer erreurs ESLint
 
 ---
 
-**Avant de coder, confirmer compréhension :**
-1. Architecture dual-source (Hyperliquid + Binance)
-2. Anti-patterns (NOWNodes pour prix, clés API client)
-3. Patterns (hooks UI, lib métier, import paths)
-4. **Convention Providers vs Hooks** (global vs local)
+## 📚 Documentation Complète
+
+- `QUICKSTART.md` - Démarrage rapide (5 min)
+- `MIGRATION.md` - Migration ancien système
+- `docs/ENVIRONMENTS.md` - Environnements multi-branches
+- `docs/CACHE_ARCHITECTURE.md` - Système de cache Firebase
+- `docs/PRICE_CALCULATIONS.md` - Logique métier calculs
+- `.github/SECRETS_SETUP.md` - Configuration GitHub Secrets
+
+---
+
+**Dernière mise à jour** : 24 novembre 2025  
+**Version** : 2.0.0

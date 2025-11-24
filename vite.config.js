@@ -7,4 +7,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  envDir: './config/credentials', // Dossier unique pour toutes les clés privées
 })
