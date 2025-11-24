@@ -6,9 +6,9 @@ Le projet utilise **3 environnements distincts** synchronisés avec les branches
 
 | Environnement | Branche Git | Fichier `.env` | Hyperliquid | Argent |
 |---------------|-------------|----------------|-------------|--------|
-| **Development** | `dev` | `.env.development` | Testnet | Faux 🧪 |
-| **Staging** | `release` | `.env.staging` | Testnet | Faux 🚀 |
-| **Production** | `main` | `.env.production` | Mainnet | Vrai ⚠️ |
+| **Development** | `dev` | `config/credentials/.env.development` | Testnet | Faux 🧪 |
+| **Staging** | `release` | `config/credentials/.env.staging` | Testnet | Faux 🚀 |
+| **Production** | `main` | `config/credentials/.env.production` | Mainnet | Vrai ⚠️ |
 
 ---
 
@@ -31,17 +31,17 @@ Le projet utilise **3 environnements distincts** synchronisés avec les branches
 
 **Pour développement (recommandé)** :
 ```bash
-cp .env.example .env.development
+cp .env.example config/credentials/.env.development
 ```
 
 **Pour staging** :
 ```bash
-cp .env.example .env.staging
+cp .env.example config/credentials/.env.staging
 ```
 
 **Pour production** :
 ```bash
-cp .env.example .env.production
+cp .env.example config/credentials/.env.production
 ```
 
 ### 2. Remplir les clés API
@@ -130,7 +130,7 @@ Ajouter dans `scripts` :
 - ❌ Clés API en clair dans le code source
 - ❌ Utiliser clés mainnet en développement
 - ❌ Partager fichiers `.env.*` par email/Slack
-- ❌ Commit accidentel de `.env.production`
+- ❌ Commit accidentel de `config/credentials/.env.production`
 
 ---
 
@@ -140,8 +140,8 @@ Ajouter dans `scripts` :
 
 ```bash
 git checkout dev
-cp .env.example .env.development
-# Éditer .env.development avec clés TESTNET
+cp .env.example config/credentials/.env.development
+# Éditer config/credentials/.env.development avec clés TESTNET
 
 npm run dev  # Lance avec testnet
 ```
@@ -150,8 +150,8 @@ npm run dev  # Lance avec testnet
 
 ```bash
 git checkout release
-cp .env.example .env.staging
-# Éditer .env.staging avec clés TESTNET
+cp .env.example config/credentials/.env.staging
+# Éditer config/credentials/.env.staging avec clés TESTNET
 
 npm run dev:staging  # Tests finaux
 ```
@@ -160,7 +160,7 @@ npm run dev:staging  # Tests finaux
 
 ```bash
 git checkout main
-# NE PAS créer .env.production localement
+# NE PAS créer config/credentials/.env.production localement
 # Les clés mainnet doivent être en variables d'environnement CI/CD
 
 npm run build  # Build production (utilise variables CI/CD)
@@ -226,7 +226,7 @@ if (import.meta.env.VITE_ENABLE_DEBUG_LOGS) {
 
 ```bash
 # Vérifier le fichier existe
-ls -la .env.development
+ls -la config/credentials/.env.development
 
 # Vérifier le mode Vite
 vite --mode development

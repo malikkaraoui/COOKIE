@@ -21,6 +21,9 @@ dist-ssr
 .env.production
 .env.*.local
 
+# Credentials centralisées (dossier unique pour toutes les clés privées)
+config/credentials/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

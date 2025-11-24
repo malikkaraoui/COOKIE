@@ -195,9 +195,9 @@ GET /api/v3/ticker/24hr?symbol=BNBUSDT
 
 | Environnement | Branche | Fichier `.env` | Hyperliquid | Argent |
 |---------------|---------|----------------|-------------|--------|
-| Development | `dev` | `.env.development` | Testnet | Faux 🧪 |
-| Staging | `release` | `.env.staging` | Testnet | Faux 🧪 |
-| Production | `main` | `.env.production` | Mainnet | Vrai ⚠️ |
+| Development | `dev` | `config/credentials/.env.development` | Testnet | Faux 🧪 |
+| Staging | `release` | `config/credentials/.env.staging` | Testnet | Faux 🧪 |
+| Production | `main` | `config/credentials/.env.production` | Mainnet | Vrai ⚠️ |
 
 ### Variables d'Environnement
 
@@ -224,7 +224,7 @@ VITE_ENVIRONMENT=                # development|staging|production
 ### Sécurité
 
 **JAMAIS commit** :
-- ❌ `.env.development`, `.env.staging`, `.env.production`
+- ❌ `config/credentials/.env.development`, `config/credentials/.env.staging`, `config/credentials/.env.production`
 - ❌ Clés API en clair dans code
 - ❌ Credentials dans fichiers `.example`
 
