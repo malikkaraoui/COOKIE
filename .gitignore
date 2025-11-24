@@ -12,10 +12,14 @@ dist
 dist-ssr
 *.local
 
-# Environment variables (Firebase config)
+# Environment variables (Firebase config, API keys)
+# TOUS les fichiers .env sont ignorés pour sécurité
 .env
 .env.local
+.env.development
+.env.staging
 .env.production
+.env.*.local
 
 # Editor directories and files
 .vscode/*

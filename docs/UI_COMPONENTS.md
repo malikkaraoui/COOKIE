@@ -1,5 +1,102 @@
 # 🎨 UI Components - COOKIE
 
+## 🎯 Hooks interactifs
+
+### `useHover` Hook
+
+Hook simple pour détecter le survol d'un élément.
+
+**Emplacement** : `src/hooks/useHover.js`
+
+#### Utilisation basique
+
+```javascript
+import { useHover } from '../hooks/useHover'
+
+function MyComponent() {
+  const { isHovered, hoverHandlers } = useHover()
+  
+  return (
+    <div 
+      {...hoverHandlers}
+      style={{ opacity: isHovered ? 1 : 0.7 }}
+    >
+      Survolez-moi !
+    </div>
+  )
+}
+```
+
+### `useButtonHover` Hook
+
+Hook pré-configuré pour boutons avec styles automatiques.
+
+#### Configuration
+
+```javascript
+const { isHovered, hoverHandlers, buttonStyle } = useButtonHover({
+  baseColor: '#6f5a72',                      // Couleur de base
+  hoverColor: '#8b7490',                     // Couleur au survol
+  baseBackground: 'transparent',             // Background de base
+  hoverBackground: 'rgba(111, 90, 114, 0.1)', // Background au survol
+  transition: 'all 0.2s ease',               // Transition CSS
+})
+```
+
+#### Exemples d'utilisation
+
+**LoginButton (Topbar)** :
+```jsx
+const { hoverHandlers, buttonStyle } = useButtonHover({
+  baseColor: '#ffffff',
+  hoverColor: '#e5e7eb',
+  baseBackground: 'rgba(255, 255, 255, 0.1)',
+  hoverBackground: 'rgba(255, 255, 255, 0.2)',
+})
+
+<button style={buttonStyle} {...hoverHandlers}>
+  Connexion avec Google
+</button>
+```
+
+**LogoutButton (Sidebar)** :
+```jsx
+const { hoverHandlers, buttonStyle } = useButtonHover({
+  baseColor: '#ef4444',
+  hoverColor: '#dc2626',
+  baseBackground: 'transparent',
+  hoverBackground: 'rgba(239, 68, 68, 0.1)',
+})
+
+<button style={buttonStyle} {...hoverHandlers}>
+  Déconnexion
+</button>
+```
+
+**ProfileButton (Sidebar)** :
+```jsx
+const { hoverHandlers, buttonStyle } = useButtonHover({
+  baseColor: '#6f5a72',
+  hoverColor: '#8b7490',
+  baseBackground: 'transparent',
+  hoverBackground: 'rgba(111, 90, 114, 0.1)',
+})
+
+<Link style={buttonStyle} {...hoverHandlers}>
+  Profil
+</Link>
+```
+
+#### Retour du hook
+
+| Propriété | Type | Description |
+|-----------|------|-------------|
+| `isHovered` | `boolean` | État du survol |
+| `hoverHandlers` | `object` | `{ onMouseEnter, onMouseLeave }` à spread |
+| `buttonStyle` | `object` | Styles CSS calculés automatiquement |
+
+---
+
 ## 📐 Composants redimensionnables
 
 ### `useResizablePanel` Hook

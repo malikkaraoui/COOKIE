@@ -1,0 +1,198 @@
+# Configuration GitHub Actions pour Déploiements Multi-Environnements
+# 
+# Ce fichier montre comment configurer les workflows pour chaque branche
+# À adapter selon votre plateforme de déploiement (Vercel, Netlify, Firebase Hosting, etc.)
+
+name: Deploy Multi-Environment
+
+# Déclencher selon la branche
+on:
+  push:
+    branches:
+      - dev        # Déploie en development
+      - release    # Déploie en staging
+      - main       # Déploie en production
+
+jobs:
+  # ====================================
+  # Job pour branche dev (testnet)
+  # ====================================
+  deploy-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env.development from secrets
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env.development
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env.development
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.development
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.development
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.development
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.development
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env.development
+          echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz" >> .env.development
+          echo "VITE_HYPERLIQUID_API_KEY=${{ secrets.VITE_HYPERLIQUID_TESTNET_API_KEY }}" >> .env.development
+          echo "VITE_HYPERLIQUID_API_SECRET=${{ secrets.VITE_HYPERLIQUID_TESTNET_API_SECRET }}" >> .env.development
+          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env.development
+          echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.development
+          echo "VITE_ENABLE_CONSOLE_ERRORS=true" >> .env.development
+          echo "VITE_ENVIRONMENT=development" >> .env.development
+
+      - name: Build for development
+        run: npm run build:dev
+
+      - name: Deploy to Firebase Hosting (dev)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_DEV }}'
+          channelId: dev
+          projectId: cookie-7c5b6
+
+  # ====================================
+  # Job pour branche release (staging)
+  # ====================================
+  deploy-staging:
+    if: github.ref == 'refs/heads/release'
+    runs-on: ubuntu-latest
+    environment: staging
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env.staging from secrets
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env.staging
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env.staging
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.staging
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.staging
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.staging
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.staging
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env.staging
+          echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz" >> .env.staging
+          echo "VITE_HYPERLIQUID_API_KEY=${{ secrets.VITE_HYPERLIQUID_STAGING_API_KEY }}" >> .env.staging
+          echo "VITE_HYPERLIQUID_API_SECRET=${{ secrets.VITE_HYPERLIQUID_STAGING_API_SECRET }}" >> .env.staging
+          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env.staging
+          echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.staging
+          echo "VITE_ENABLE_CONSOLE_ERRORS=true" >> .env.staging
+          echo "VITE_ENVIRONMENT=staging" >> .env.staging
+
+      - name: Build for staging
+        run: npm run build:staging
+
+      - name: Deploy to Firebase Hosting (staging)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}'
+          channelId: staging
+          projectId: cookie-7c5b6
+
+  # ====================================
+  # Job pour branche main (production)
+  # ====================================
+  deploy-production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env.production from secrets
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env.production
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env.production
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.production
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.production
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.production
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.production
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env.production
+          echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid.xyz" >> .env.production
+          echo "VITE_HYPERLIQUID_API_KEY=${{ secrets.VITE_HYPERLIQUID_PRODUCTION_API_KEY }}" >> .env.production
+          echo "VITE_HYPERLIQUID_API_SECRET=${{ secrets.VITE_HYPERLIQUID_PRODUCTION_API_SECRET }}" >> .env.production
+          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env.production
+          echo "VITE_BINANCE_API_KEY=${{ secrets.VITE_BINANCE_PRODUCTION_API_KEY }}" >> .env.production
+          echo "VITE_BINANCE_API_SECRET=${{ secrets.VITE_BINANCE_PRODUCTION_API_SECRET }}" >> .env.production
+          echo "VITE_ENABLE_DEBUG_LOGS=false" >> .env.production
+          echo "VITE_ENABLE_CONSOLE_ERRORS=false" >> .env.production
+          echo "VITE_ENVIRONMENT=production" >> .env.production
+
+      - name: Build for production
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting (production)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_PROD }}'
+          projectId: cookie-7c5b6
+
+# ====================================
+# CONFIGURATION GITHUB SECRETS REQUISE
+# ====================================
+# 
+# Dans GitHub → Settings → Secrets and variables → Actions
+# Créer les secrets suivants :
+#
+# 🔷 Firebase (commun à tous les environnements)
+# - VITE_FIREBASE_API_KEY
+# - VITE_FIREBASE_AUTH_DOMAIN
+# - VITE_FIREBASE_PROJECT_ID
+# - VITE_FIREBASE_STORAGE_BUCKET
+# - VITE_FIREBASE_MESSAGING_SENDER_ID
+# - VITE_FIREBASE_APP_ID
+# - VITE_FIREBASE_DATABASE_URL
+#
+# 🧪 Hyperliquid TESTNET (dev + staging)
+# - VITE_HYPERLIQUID_TESTNET_API_KEY
+# - VITE_HYPERLIQUID_TESTNET_API_SECRET
+# - VITE_HYPERLIQUID_STAGING_API_KEY (peut être identique à testnet)
+# - VITE_HYPERLIQUID_STAGING_API_SECRET
+#
+# 🔴 Hyperliquid MAINNET (production uniquement)
+# - VITE_HYPERLIQUID_PRODUCTION_API_KEY (⚠️ VRAI ARGENT)
+# - VITE_HYPERLIQUID_PRODUCTION_API_SECRET
+#
+# 💰 Binance (production, optionnel)
+# - VITE_BINANCE_PRODUCTION_API_KEY
+# - VITE_BINANCE_PRODUCTION_API_SECRET
+#
+# 🔥 Firebase Service Accounts
+# - FIREBASE_SERVICE_ACCOUNT_DEV
+# - FIREBASE_SERVICE_ACCOUNT_STAGING
+# - FIREBASE_SERVICE_ACCOUNT_PROD
