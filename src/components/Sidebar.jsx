@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
-import { Users, ChefHat, Coins } from 'lucide-react'
+import { ShoppingBasket, ChefHat } from 'lucide-react'
 
 export default function Sidebar() {
   // gestion du redimensionnement horizontal
@@ -74,20 +74,15 @@ export default function Sidebar() {
 
   const links = [
     { 
-      to: '/MarmitonCommunautaire', 
-      label: 'Marmiton Communautaire',
-      icon: Users
+      to: '/ÉpicerieFine', 
+      label: 'Épicerie fine',
+      icon: ShoppingBasket
     },
     { 
       to: '/MaCuisine', 
       label: 'Ma cuisine', 
       dropZone: true,
       icon: ChefHat
-    },
-    { 
-      to: '/BinanceToken', 
-      label: 'Binance liste token',
-      icon: Coins
     },
   ]
 

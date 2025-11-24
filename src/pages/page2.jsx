@@ -27,7 +27,7 @@ export default function Page2() {
           <p style={{ fontSize: 16, marginBottom: 8 }}>Aucun token sélectionné</p>
           <p style={{ fontSize: 14 }}>
             {user
-              ? 'Glissez des tokens depuis "Marmiton Communautaire" pour les suivre ici'
+              ? 'Glissez des tokens depuis "Épicerie fine" pour les suivre ici'
               : 'Connectez-vous pour commencer à cuisiner'
             }
           </p>
