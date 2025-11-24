@@ -129,6 +129,7 @@ COOKIE/
 - Node.js >= 18.0
 - npm ou yarn
 - Compte Firebase avec projet configuré
+- Clés API Hyperliquid Testnet (pour développement)
 
 ### Étapes
 
@@ -143,23 +144,46 @@ cd COOKIE
 npm install
 ```
 
-3. **Configurer Firebase**
+3. **Configurer l'environnement**
 
-Créer un fichier `.env` à la racine :
+> 🆕 **Le projet utilise désormais 3 environnements distincts** : development, staging, production
+
+**Pour démarrer rapidement** :
+```bash
+# Copier le template d'environnement développement
+cp .env.development.example .env.development
+
+# Éditer et remplir vos clés API
+code .env.development
+```
+
+**Variables requises** dans `.env.development` :
 ```env
+# Firebase (configuration partagée)
 VITE_FIREBASE_API_KEY=your_api_key_here
 VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project-id
 VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
 VITE_FIREBASE_MESSAGING_SENDER_ID=123456789012
 VITE_FIREBASE_APP_ID=1:123456789012:web:abcdef123456
+VITE_FIREBASE_DATABASE_URL=https://your-project-default-rtdb.firebaseio.com
+
+# Hyperliquid TESTNET (faux argent pour développement)
+VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz
+VITE_HYPERLIQUID_API_KEY=your_testnet_api_key
+VITE_HYPERLIQUID_API_SECRET=your_testnet_api_secret
 ```
 
-> ⚠️ **Important** : Le fichier `.env` est déjà dans `.gitignore` pour éviter de versionner vos clés.
+> ⚠️ **Important** : 
+> - Tous les fichiers `.env.*` sont dans `.gitignore` pour protéger vos clés
+> - **Development** utilise testnet Hyperliquid (faux argent 🧪)
+> - **Production** utilise mainnet Hyperliquid (vrai argent ⚠️)
+> 
+> 📚 **Documentation complète** : Voir [`QUICKSTART.md`](./QUICKSTART.md) pour guide détaillé
 
-4. **Déployer les règles Firestore**
+4. **Déployer les règles Realtime Database**
 ```bash
-firebase deploy --only firestore:rules
+firebase deploy --only database
 ```
 
 5. **Lancer le serveur de développement**
@@ -169,16 +193,39 @@ npm run dev
 
 L'application sera accessible sur `http://localhost:5173` 🎉
 
+> 💡 **Aide supplémentaire** :
+> - Guide rapide : [`QUICKSTART.md`](./QUICKSTART.md)
+> - Migration depuis ancien système : [`MIGRATION.md`](./MIGRATION.md)
+> - Documentation technique : [`docs/ENVIRONMENTS.md`](./docs/ENVIRONMENTS.md)
+
 ---
 
 ## 🔧 Scripts Disponibles
 
+### Développement
 ```bash
-npm run dev          # Lancer le serveur de dev Vite
-npm run build        # Build de production
-npm run preview      # Prévisualiser le build
-npm run lint         # Linter le code
+npm run dev              # Lancer en mode development (testnet)
+npm run dev:staging      # Lancer en mode staging (préproduction)
+npm run dev:prod         # Lancer en mode production (mainnet, test local)
 ```
+
+### Build
+```bash
+npm run build            # Build production (mainnet)
+npm run build:dev        # Build development (testnet)
+npm run build:staging    # Build staging (préproduction)
+```
+
+### Autres
+```bash
+npm run preview          # Prévisualiser le build production
+npm run preview:staging  # Prévisualiser le build staging
+npm run lint             # Linter le code
+```
+
+> 📘 **Note** : Chaque script charge automatiquement le fichier `.env.*` correspondant
+> - `dev` → `.env.development` → Testnet Hyperliquid (faux argent)
+> - `build` → `.env.production` → Mainnet Hyperliquid (vrai argent ⚠️)
 
 ---
 
@@ -285,12 +332,16 @@ Voir `src/lib/infoClient.js` pour l'implémentation du client HTTP.
 
 ## 📚 Documentation
 
-### Architecture Firestore
-Voir [`docs/FIRESTORE_ARCHITECTURE.md`](./docs/FIRESTORE_ARCHITECTURE.md) pour :
-- Structure détaillée des collections
-- Stratégies d'indexation
-- Patterns de requêtes
-- Cas d'usage avancés
+### 🌍 Environnements & Configuration
+- **[QUICKSTART.md](./QUICKSTART.md)** - Guide rapide de démarrage (5 min)
+- **[MIGRATION.md](./MIGRATION.md)** - Migration depuis l'ancien système .env
+- **[docs/ENVIRONMENTS.md](./docs/ENVIRONMENTS.md)** - Documentation technique complète
+- **[.github/SECRETS_SETUP.md](./.github/SECRETS_SETUP.md)** - Configuration GitHub Secrets pour CI/CD
+
+### 🏗️ Architecture
+- **[docs/CACHE_ARCHITECTURE.md](./docs/CACHE_ARCHITECTURE.md)** - Système de cache des prix
+- **[docs/PRICE_CALCULATIONS.md](./docs/PRICE_CALCULATIONS.md)** - Logique métier des calculs
+- **[docs/FIRESTORE_ARCHITECTURE.md](./docs/FIRESTORE_ARCHITECTURE.md)** - Architecture BDD (legacy)
 
 ### MCP Servers
 

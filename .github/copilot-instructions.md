@@ -250,7 +250,7 @@ export function calculatePriceChange(current, previous) {
 1. **Vérifier aucune régression** (tester les fonctionnalités impactées)
 2. **Nettoyer les console.log** et code commenté
 3. **Mettre à jour la documentation** si architecture modifiée
-4. **Commit avec message descriptif**
+4. **Commit avec Conventional Commits** (utiliser extension VS Code)
 
 ### ⛔ Interdictions absolues :
 - ❌ Laisser du code cassé "pour plus tard"
@@ -261,8 +261,154 @@ export function calculatePriceChange(current, previous) {
 
 ---
 
+## 📝 Git Workflow - Conventional Commits
+
+### Extension VS Code
+
+**Installer** : `Conventional Commits` extension  
+**Commande** : `Ctrl+Shift+P` → `Conventional Commits`
+
+### Format standard
+
+```
+<type>(<scope>): <description>
+
+[body optionnel]
+
+[footer optionnel]
+```
+
+### Types (sélectionnables via extension)
+
+| Type | Quand utiliser | Emoji |
+|------|----------------|-------|
+| **feat** | Nouvelle fonctionnalité | ✨ |
+| **fix** | Correction de bug | 🐛 |
+| **docs** | Documentation seule | 📝 |
+| **style** | Formatage, CSS, UI | 💄 |
+| **refactor** | Refactoring (sans changement fonctionnel) | ♻️ |
+| **perf** | Amélioration performances | ⚡ |
+| **test** | Ajout/modification tests | ✅ |
+| **chore** | Maintenance, dépendances | 🔧 |
+| **ci** | CI/CD, workflows | 👷 |
+| **build** | Build, config bundler | 📦 |
+
+### Scopes du projet COOKIE
+
+Utiliser ces scopes dans l'extension :
+
+- `hooks` - Hooks React custom
+- `providers` - Providers/Context global
+- `context` - Context (à migrer vers providers)
+- `components` - Layouts (Sidebar, Topbar, AppLayout)
+- `elements` - UI réutilisables (TokenTile)
+- `pages` - Pages routing
+- `auth` - Authentification Google
+- `firebase` - Realtime Database, rules
+- `api` - Hyperliquid, Binance API
+- `ui` - UI/UX, styles
+- `docs` - Documentation markdown
+- `config` - Configuration, tokens lists
+
+### Workflow recommandé
+
+**1. Faire les modifications** → Tester → Vérifier régressions
+
+**2. Staging**
+```bash
+git add .
+git status  # Vérifier les fichiers
+```
+
+**3. Commit via extension**
+- `Ctrl+Shift+P` → `Conventional Commits`
+- Sélectionner **type** (feat, fix, docs...)
+- Sélectionner **scope** (hooks, components...)
+- Écrire **description** (impératif, lowercase, < 72 char)
+- Ajouter **body** si nécessaire (contexte, pourquoi)
+- Ajouter **footer** si breaking change
+
+**4. Push**
+```bash
+git push origin main
+```
+
+### Exemples via extension
+
+**Feature avec scope** :
+```
+Type: feat
+Scope: hooks
+Description: add useHover for button interactions
+Body: 
+- Create useHover hook for basic hover detection
+- Create useButtonHover with customizable colors
+- Apply to all auth buttons (Login, Logout, Profile)
+
+→ Résultat: feat(hooks): add useHover for button interactions
+```
+
+**Fix avec scope** :
+```
+Type: fix
+Scope: sidebar
+Description: height calculation with topbar resize
+Body: Use ResizeObserver to update sidebar height dynamically
+
+→ Résultat: fix(sidebar): height calculation with topbar resize
+```
+
+**Docs seules** :
+```
+Type: docs
+Scope: ui
+Description: add useHover examples and API reference
+
+→ Résultat: docs(ui): add useHover examples and API reference
+```
+
+**Chore (deps)** :
+```
+Type: chore
+Scope: deps
+Description: install lucide-react for icons
+
+→ Résultat: chore(deps): install lucide-react for icons
+```
+
+### Breaking Changes
+
+Via l'extension, cocher **"Breaking change"** et ajouter dans footer :
+```
+BREAKING CHANGE: useToken now requires source parameter
+```
+
+Résultat :
+```
+feat(hooks)!: require source parameter in useToken
+
+BREAKING CHANGE: useToken now requires source parameter
+All components using useToken must specify 'hyperliquid' or 'binance'
+```
+
+### Règles strictes
+
+✅ **Description en impératif** : "add" pas "added"  
+✅ **Lowercase** (sauf noms propres : Firebase, Binance)  
+✅ **Pas de point final** dans description  
+✅ **Max 72 caractères** pour description  
+✅ **Body pour contexte** si changement complexe  
+✅ **Footer pour breaking changes** obligatoire  
+
+❌ **Messages vagues** : "fix bug", "update"  
+❌ **Mélanger types** : feat + fix dans même commit  
+❌ **Commits trop gros** : découper en commits logiques  
+
+---
+
 **Avant de coder, confirmer compréhension :**
 1. Architecture dual-source (Hyperliquid + Binance)
 2. Anti-patterns (NOWNodes pour prix, clés API client)
 3. Patterns (hooks UI, lib métier, import paths)
 4. **Convention Providers vs Hooks** (global vs local)
+5. **Conventional Commits via extension VS Code**
