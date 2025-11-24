@@ -1,16 +1,40 @@
 /**
  * La Marmite - Page de vote communautaire
  * Épargne collective avec décisions votées quotidiennement
+ * Nécessite authentification pour voter
  */
 
 import { useState, useEffect } from 'react'
-import { ChefHat } from 'lucide-react'
+import { ChefHat, LogIn } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { saveUserVote, getUserVote } from '../lib/database/userService'
 
 export default function LaMarmite() {
+  const { user } = useAuth()
+  
+  // ID unique de la question du jour (format: Q-YYYY-MM-DD)
+  const questionId = `Q-${new Date().toISOString().split('T')[0]}`
+  
   // Chrono 8h (28800 secondes)
   const [timeLeft, setTimeLeft] = useState(8 * 60 * 60)
   const [selectedVote, setSelectedVote] = useState(null)
   const [hasVoted, setHasVoted] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+
+  // Charger le vote existant de l'utilisateur au montage
+  useEffect(() => {
+    if (user) {
+      getUserVote(user.uid, questionId).then(vote => {
+        if (vote) {
+          setSelectedVote(vote.choice)
+          setHasVoted(true)
+        }
+      }).catch(err => {
+        console.error('Erreur chargement vote:', err)
+      })
+    }
+  }, [user, questionId])
 
   // Décompte du temps
   useEffect(() => {
@@ -27,9 +51,28 @@ export default function LaMarmite() {
     return `${h}h ${m}m ${s}s`
   }
 
-  const handleVote = (choice) => {
-    setSelectedVote(choice)
-    setHasVoted(true)
+  const handleVote = async (choice) => {
+    // Vérifier si l'utilisateur est connecté
+    if (!user) {
+      setShowLoginPrompt(true)
+      return
+    }
+
+    setIsLoading(true)
+    
+    try {
+      // Sauvegarder le vote dans Firebase
+      await saveUserVote(user.uid, questionId, choice)
+      
+      setSelectedVote(choice)
+      setHasVoted(true)
+      setShowLoginPrompt(false)
+    } catch (error) {
+      console.error('Erreur lors du vote:', error)
+      alert('Erreur lors de l\'enregistrement du vote. Veuillez réessayer.')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -139,10 +182,34 @@ export default function LaMarmite() {
 
         {/* Options de vote */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Prompt connexion */}
+          {showLoginPrompt && !user && (
+            <div style={{
+              padding: '20px',
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '2px solid #3b82f6',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '8px'
+            }}>
+              <LogIn size={24} color="#3b82f6" />
+              <div>
+                <div style={{ color: '#3b82f6', fontWeight: '600', marginBottom: '4px' }}>
+                  Connexion requise
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '14px' }}>
+                  Veuillez vous connecter pour valider votre vote et participer aux décisions de la communauté.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Option 1 - Prudent */}
           <button
             onClick={() => handleVote('prudent')}
-            disabled={hasVoted}
+            disabled={hasVoted || isLoading}
             style={{
               background: selectedVote === 'prudent' 
                 ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
@@ -150,16 +217,16 @@ export default function LaMarmite() {
               border: selectedVote === 'prudent' ? '2px solid #22c55e' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: hasVoted ? 'not-allowed' : 'pointer',
+              cursor: (hasVoted || isLoading) ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               opacity: hasVoted && selectedVote !== 'prudent' ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -182,7 +249,7 @@ export default function LaMarmite() {
           {/* Option 2 - Risqué */}
           <button
             onClick={() => handleVote('risque')}
-            disabled={hasVoted}
+            disabled={hasVoted || isLoading}
             style={{
               background: selectedVote === 'risque' 
                 ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
@@ -190,16 +257,16 @@ export default function LaMarmite() {
               border: selectedVote === 'risque' ? '2px solid #ef4444' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: hasVoted ? 'not-allowed' : 'pointer',
+              cursor: (hasVoted || isLoading) ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               opacity: hasVoted && selectedVote !== 'risque' ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted && !isLoading) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -221,7 +288,7 @@ export default function LaMarmite() {
         </div>
 
         {/* Confirmation vote */}
-        {hasVoted && (
+        {hasVoted && user && (
           <div style={{
             marginTop: '24px',
             padding: '16px',
@@ -234,6 +301,23 @@ export default function LaMarmite() {
             fontWeight: '600'
           }}>
             ✅ Vote enregistré ! Merci pour votre participation.
+          </div>
+        )}
+
+        {/* Loading */}
+        {isLoading && (
+          <div style={{
+            marginTop: '24px',
+            padding: '16px',
+            background: 'rgba(59, 130, 246, 0.1)',
+            border: '1px solid #3b82f6',
+            borderRadius: '12px',
+            color: '#3b82f6',
+            textAlign: 'center',
+            fontSize: '14px',
+            fontWeight: '600'
+          }}>
+            ⏳ Enregistrement du vote...
           </div>
         )}
       </div>

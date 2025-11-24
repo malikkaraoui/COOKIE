@@ -205,3 +205,40 @@ export async function getSelectedTokens(uid) {
   return []
 }
 
+/**
+ * Enregistre le vote d'un utilisateur pour une question quotidienne
+ * Structure: /users/{uid}/votes/{questionId}: { choice, votedAt }
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {string} questionId - ID unique de la question (ex: "Q-2025-11-24")
+ * @param {string} choice - Choix de l'utilisateur ("prudent" ou "risque")
+ * @returns {Promise<void>}
+ */
+export async function saveUserVote(uid, questionId, choice) {
+  if (!uid) throw new Error('UID requis')
+  if (!questionId) throw new Error('questionId requis')
+  if (!choice) throw new Error('choice requis')
+  
+  const voteRef = ref(db, `users/${uid}/votes/${questionId}`)
+  
+  await set(voteRef, {
+    choice,
+    votedAt: Date.now()
+  })
+}
+
+/**
+ * Récupère le vote d'un utilisateur pour une question spécifique
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {string} questionId - ID unique de la question
+ * @returns {Promise<Object|null>} - { choice, votedAt } ou null si pas de vote
+ */
+export async function getUserVote(uid, questionId) {
+  if (!uid || !questionId) return null
+  
+  const voteRef = ref(db, `users/${uid}/votes/${questionId}`)
+  const snapshot = await get(voteRef)
+  
+  return snapshot.exists() ? snapshot.val() : null
+}
