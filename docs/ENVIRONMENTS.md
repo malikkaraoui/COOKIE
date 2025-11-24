@@ -50,9 +50,10 @@ cp .env.example .env.production
 
 #### Firebase (partagé entre tous les environnements)
 ```bash
-VITE_FIREBASE_API_KEY=AIzaSyBr6MXqUHOXUJx9NpgWE9K09mk_NOnPyqs
-VITE_FIREBASE_AUTH_DOMAIN=cookie-7c5b6.firebaseapp.com
-# ... (valeurs réelles déjà fournies)
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+# ... (voir .env.development.example pour valeurs complètes)
 ```
 
 #### Hyperliquid (selon environnement)
