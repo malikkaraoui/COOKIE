@@ -15,8 +15,38 @@ export default function LaMarmite() {
   // ID unique de la question du jour (format: Q-YYYY-MM-DD)
   const questionId = `Q-${new Date().toISOString().split('T')[0]}`
   
-  // Chrono 8h (28800 secondes)
-  const [timeLeft, setTimeLeft] = useState(8 * 60 * 60)
+  // Calculer le temps restant jusqu'à 19h Paris
+  const calculateTimeLeft = () => {
+    const now = new Date()
+    
+    // Convertir en heure de Paris (UTC+1 ou UTC+2 selon DST)
+    const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
+    
+    // Définir 19h00 aujourd'hui
+    const deadline = new Date(parisTime)
+    deadline.setHours(19, 0, 0, 0)
+    
+    // Si on est déjà après 19h, le vote est terminé
+    if (parisTime >= deadline) {
+      return 0
+    }
+    
+    // Calculer la différence en secondes
+    const diff = Math.floor((deadline - parisTime) / 1000)
+    return Math.max(0, diff)
+  }
+
+  // Vérifier si on est dans la plage horaire de vote (8h-19h Paris)
+  const isVotingTime = () => {
+    const now = new Date()
+    const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
+    const hour = parisTime.getHours()
+    
+    return hour >= 8 && hour < 19
+  }
+
+  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft())
+  const [canVote, setCanVote] = useState(isVotingTime())
   const [selectedVote, setSelectedVote] = useState(null)
   const [hasVoted, setHasVoted] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -39,8 +69,18 @@ export default function LaMarmite() {
   // Décompte du temps
   useEffect(() => {
     const interval = setInterval(() => {
-      setTimeLeft(prev => Math.max(0, prev - 1))
+      const newTimeLeft = calculateTimeLeft()
+      const newCanVote = isVotingTime()
+      
+      setTimeLeft(newTimeLeft)
+      setCanVote(newCanVote)
+      
+      // Si le temps est écoulé ou hors plage horaire, on arrête le timer
+      if (newTimeLeft === 0 || !newCanVote) {
+        clearInterval(interval)
+      }
     }, 1000)
+    
     return () => clearInterval(interval)
   }, [])
 
@@ -60,6 +100,12 @@ export default function LaMarmite() {
   }
 
   const handleConfirmVote = async () => {
+    // Vérifier si on est dans la plage horaire
+    if (!canVote) {
+      alert('Les votes sont possibles uniquement entre 8h et 19h (heure de Paris)')
+      return
+    }
+
     // Vérifier si l'utilisateur est connecté
     if (!user) {
       setShowLoginPrompt(true)
@@ -169,14 +215,20 @@ export default function LaMarmite() {
               color: '#94a3b8',
               fontSize: '14px'
             }}>
-              <span>Vote quotidien</span>
+              <span>Vote quotidien (8h-19h)</span>
               <span>•</span>
-              <span style={{ 
-                color: timeLeft < 3600 ? '#ef4444' : '#22c55e',
-                fontWeight: '600'
-              }}>
-                Expire dans {formatTime(timeLeft)}
-              </span>
+              {!canVote ? (
+                <span style={{ color: '#ef4444', fontWeight: '600' }}>
+                  Vote fermé
+                </span>
+              ) : (
+                <span style={{ 
+                  color: timeLeft < 3600 ? '#ef4444' : '#22c55e',
+                  fontWeight: '600'
+                }}>
+                  Expire dans {formatTime(timeLeft)}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -194,6 +246,23 @@ export default function LaMarmite() {
 
         {/* Options de vote */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Message hors horaire */}
+          {!canVote && !hasVoted && (
+            <div style={{
+              padding: '20px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '2px solid #ef4444',
+              borderRadius: '12px',
+              color: '#ef4444',
+              textAlign: 'center',
+              fontSize: '14px',
+              fontWeight: '600',
+              marginBottom: '8px'
+            }}>
+              ⏰ Les votes sont ouverts de 8h00 à 19h00 (heure de Paris)
+            </div>
+          )}
+
           {/* Prompt connexion */}
           {showLoginPrompt && !user && (
             <div style={{
@@ -221,7 +290,7 @@ export default function LaMarmite() {
           {/* Option 1 - Prudent */}
           <button
             onClick={() => handleSelectVote('prudent')}
-            disabled={hasVoted}
+            disabled={hasVoted || !canVote}
             style={{
               background: selectedVote === 'prudent' 
                 ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
@@ -229,16 +298,16 @@ export default function LaMarmite() {
               border: selectedVote === 'prudent' ? '2px solid #22c55e' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: hasVoted ? 'not-allowed' : 'pointer',
+              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
-              opacity: hasVoted && selectedVote !== 'prudent' ? 0.5 : 1,
+              opacity: (hasVoted && selectedVote !== 'prudent') || !canVote ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -261,7 +330,7 @@ export default function LaMarmite() {
           {/* Option 2 - Risqué */}
           <button
             onClick={() => handleSelectVote('risque')}
-            disabled={hasVoted}
+            disabled={hasVoted || !canVote}
             style={{
               background: selectedVote === 'risque' 
                 ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
@@ -269,16 +338,16 @@ export default function LaMarmite() {
               border: selectedVote === 'risque' ? '2px solid #ef4444' : '2px solid #475569',
               borderRadius: '16px',
               padding: '24px',
-              cursor: hasVoted ? 'not-allowed' : 'pointer',
+              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
-              opacity: hasVoted && selectedVote !== 'risque' ? 0.5 : 1,
+              opacity: (hasVoted && selectedVote !== 'risque') || !canVote ? 0.5 : 1,
               textAlign: 'left'
             }}
             onMouseEnter={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(8px)'
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
             }}
             onMouseLeave={(e) => {
-              if (!hasVoted) e.currentTarget.style.transform = 'translateX(0)'
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
             }}
           >
             <div style={{ 
@@ -300,7 +369,7 @@ export default function LaMarmite() {
         </div>
 
         {/* Bouton de validation */}
-        {!hasVoted && (
+        {!hasVoted && canVote && (
           <button
             onClick={handleConfirmVote}
             disabled={!selectedVote || isLoading}
