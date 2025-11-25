@@ -6,13 +6,14 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBr6MXqUHOXUJx9NpgWE9K09mk_NOnPyqs",
+  apiKey: "AIzaSyAoXkM4EAk7AcbXONYQiTDNVz-ekvQRmag",
   authDomain: "cookie1-b3592.firebaseapp.com",
   databaseURL: "https://cookie1-b3592-default-rtdb.firebaseio.com",
   projectId: "cookie1-b3592",
   storageBucket: "cookie1-b3592.firebasestorage.app",
-  messagingSenderId: "989136449677",
-  appId: "1:989136449677:web:f84c762f9c89a60a2732c4",
+  messagingSenderId: "574703740832",
+  appId: "1:574703740832:web:6203ea9a1807a2c251e6c5",
+  measurementId: "G-YBDCE9BGC8"
 }
 
 // Initialisation de l'application Firebase

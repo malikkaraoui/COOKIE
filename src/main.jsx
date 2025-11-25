@@ -6,7 +6,6 @@ import './index.css'
 import { NavigationProvider } from './context/NavigationContext'
 import { AuthProvider } from './auth/AuthContext'
 
-console.log('Environnement:', import.meta.env)
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
