@@ -11,23 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Determine environment
-        id: env
-        run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
-            echo "BUILD_MODE=production" >> $GITHUB_OUTPUT
-            echo "CHANNEL_ID=live" >> $GITHUB_OUTPUT
-            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/release" ]]; then
-            echo "BUILD_MODE=staging" >> $GITHUB_OUTPUT
-            echo "CHANNEL_ID=staging" >> $GITHUB_OUTPUT
-            echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
-            echo "BUILD_MODE=development" >> $GITHUB_OUTPUT
-            echo "CHANNEL_ID=dev" >> $GITHUB_OUTPUT
-            echo "ENV_NAME=development" >> $GITHUB_OUTPUT
-          fi
-
       - name: Create .env file
         run: |
           echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
