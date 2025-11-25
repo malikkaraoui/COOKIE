@@ -7,10 +7,29 @@ import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
-import { ShoppingBasket, ChefHat, Soup } from 'lucide-react'
+import { ShoppingBasket, ChefHat, Soup, Menu, X } from 'lucide-react'
 
 export default function Sidebar() {
-  // gestion du redimensionnement horizontal
+  // État mobile menu
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Détection mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  // Fermer menu mobile quand on clique sur un lien
+  const closeMobileMenu = () => {
+    if (isMobile) setIsMobileMenuOpen(false)
+  }
+
+  // gestion du redimensionnement horizontal (desktop seulement)
   const { size: width, isResizing, startResizing, handleDoubleClick } = useResizablePanel({
     min: 110,
     max: 420,
@@ -93,7 +112,65 @@ export default function Sidebar() {
 
   return (
     <>
-      <nav className="sidebar" style={{ width, height: sidebarHeight }}>
+      {/* Bouton hamburger (mobile uniquement) */}
+      {isMobile && (
+        <button
+          className="mobile-menu-toggle"
+          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '20px',
+            zIndex: 1001,
+            background: '#000',
+            border: 'none',
+            borderRadius: '8px',
+            padding: '12px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+          }}
+        >
+          {isMobileMenuOpen ? (
+            <X size={24} color="white" />
+          ) : (
+            <Menu size={24} color="white" />
+          )}
+        </button>
+      )}
+
+      {/* Backdrop (mobile uniquement) */}
+      {isMobile && isMobileMenuOpen && (
+        <div
+          className="mobile-backdrop"
+          onClick={() => setIsMobileMenuOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 999,
+            animation: 'fadeIn 0.2s ease-out'
+          }}
+        />
+      )}
+
+      <nav 
+        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''}`}
+        style={{ 
+          width: isMobile ? '280px' : width, 
+          height: sidebarHeight,
+          transform: isMobile && !isMobileMenuOpen ? 'translateX(-100%)' : 'translateX(0)',
+          transition: isMobile ? 'transform 0.3s ease-out' : 'none',
+          position: isMobile ? 'fixed' : 'relative',
+          zIndex: isMobile ? 1000 : 'auto',
+          left: isMobile ? 0 : 'auto'
+        }}
+      >
         <div className="sidebar-inner">
           {/* Zone scrollable des liens */}
           <div className="scrollable-links">
@@ -122,7 +199,10 @@ export default function Sidebar() {
                       gap: '10px',
                       justifyContent: isCompact ? 'center' : 'flex-start'
                     }}
-                    onClick={() => setActivePage(to)}
+                    onClick={() => {
+                      setActivePage(to)
+                      closeMobileMenu()
+                    }}
                   >
                     {/* Icône Lucide */}
                     <Icon size={20} strokeWidth={2} />
@@ -180,12 +260,15 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      <div
-        className={`sidebar-resizer ${isResizing ? 'is-resizing' : ''}`}
-        onMouseDown={startResizing}
-        onDoubleClick={handleDoubleClick}
-        title="Double-clic pour réduire/étendre"
-      />
+      {/* Resizer (desktop uniquement) */}
+      {!isMobile && (
+        <div
+          className={`sidebar-resizer ${isResizing ? 'is-resizing' : ''}`}
+          onMouseDown={startResizing}
+          onDoubleClick={handleDoubleClick}
+          title="Double-clic pour réduire/étendre"
+        />
+      )}
     </>
   )
 }

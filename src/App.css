@@ -145,3 +145,38 @@ body {
   overflow-y: auto; /* Scroll indépendant du contenu de la page */
   height: 100%; /* Hauteur fixe */
 }
+
+/* ====================================
+   MOBILE RESPONSIVE
+   ==================================== */
+
+/* Animation fade in backdrop */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Mobile: adapter la page principale */
+@media (max-width: 767px) {
+  .layout {
+    margin-left: 0 !important; /* Pas de marge sur mobile */
+  }
+  
+  .page {
+    padding: 16px; /* Padding réduit */
+  }
+  
+  /* Sidebar mobile: overlay au-dessus du contenu */
+  .sidebar.mobile {
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Cacher le resizer sur mobile */
+  .sidebar-resizer {
+    display: none;
+  }
+}
