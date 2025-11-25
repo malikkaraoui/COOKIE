@@ -73,7 +73,7 @@ jobs:
           fi
 
       - name: Build
-        run: npm run build:${{ steps.env.outputs.BUILD_MODE }}
+        run: npm run build
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
