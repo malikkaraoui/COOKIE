@@ -1,18 +1,18 @@
 // Configuration Firebase centralisée
-// Les clés sont stockées dans les variables d'environnement (.env)
+// ⚠️ Ces clés sont PUBLIQUES (exposées côté client de toute façon)
+// La sécurité vient des règles Firebase Realtime Database
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
-console.log('Environnement:', import.meta.env)
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: "AIzaSyBr6MXqUHOXUJx9NpgWE9K09mk_NOnPyqs",
+  authDomain: "cookie1-b3592.firebaseapp.com",
+  databaseURL: "https://cookie1-b3592-default-rtdb.firebaseio.com",
+  projectId: "cookie1-b3592",
+  storageBucket: "cookie1-b3592.firebasestorage.app",
+  messagingSenderId: "989136449677",
+  appId: "1:989136449677:web:f84c762f9c89a60a2732c4",
 }
 
 // Initialisation de l'application Firebase
