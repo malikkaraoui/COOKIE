@@ -14,6 +14,7 @@ export default function ProfilePage() {
   
   const [birthDate, setBirthDate] = useState('')
   const [message, setMessage] = useState('')
+  const [updating, setUpdating] = useState(false)
 
   const handleSave = async (e) => {
     e.preventDefault()
@@ -23,6 +24,7 @@ export default function ProfilePage() {
       return
     }
 
+    setUpdating(true)
     try {
       await updateProfile({
         birthDate: new Date(birthDate),
@@ -32,6 +34,8 @@ export default function ProfilePage() {
     } catch (err) {
       console.error('Erreur mise à jour profil:', err)
       setMessage(`❌ Erreur: ${err.code || err.message}`)
+    } finally {
+      setUpdating(false)
     }
   }
 

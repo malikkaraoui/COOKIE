@@ -37,7 +37,7 @@ Les clés API Firebase ont été **accidentellement exposées dans l'historique 
 
 #### Console Firebase
 1. Aller sur https://console.firebase.google.com
-2. Sélectionner projet `cookie-7c5b6`
+2. Sélectionner projet `cookie1-b3592`
 3. Aller dans **Project Settings** (⚙️ en haut à gauche)
 4. Aller dans l'onglet **General**
 5. Scroller vers **Your apps** → Section Web app
@@ -98,7 +98,8 @@ bfg --replace-text passwords.txt
 
 # passwords.txt contient :
 # AIzaSyBr6MXqUHOXUJx9NpgWE9K09mk_NOnPyqs==>REMOVED
-# cookie-7c5b6==>REMOVED
+# cookie-7c5b6==>REMOVED (ancien projet)
+# cookie1-b3592==>NOUVEAU PROJET
 # 989136449677==>REMOVED
 # 1:989136449677:web:f84c762f9c89a60a2732c4==>REMOVED
 

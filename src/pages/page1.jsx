@@ -1,23 +1,74 @@
+/**
+ * Épicerie fine 🛒 - Page fusionnée Hyperliquid + Binance
+ * Affiche TOUS les tokens disponibles avec indication de la source
+ * Support drag & drop vers "Ma cuisine"
+ */
+
 import TokenTile from '../elements/TokenTile'
+import { TOKENS } from '../config/tokenList'
+import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 
 export default function Page1() {
+  // Combiner Hyperliquid (10 tokens) + Binance (30 tokens)
+  // Afficher les tokens Hyperliquid en premier, puis Binance
+  // Si un token existe dans les deux sources, afficher les deux versions
+  
+  const hyperliquidTokens = TOKENS.map(token => ({
+    symbol: token.symbol,
+    source: 'hyperliquid',
+    color: token.color
+  }))
+
+  const binanceTokens = BINANCE_DEFAULT_TOKENS.map(token => ({
+    symbol: token.id,
+    source: 'binance',
+    color: null // couleur gérée par TokenTile
+  }))
+
+  // Fusionner sans dédupliquer - on peut avoir BNB:hyperliquid ET BNB:binance
+  const allTokens = [...hyperliquidTokens, ...binanceTokens]
+
   return (
     <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <h1 style={{ color: '#e5e7eb', marginBottom: 16 }}>Marmiton Communautaire</h1>
-      <p style={{ color: '#94a3b8', fontSize: 14 }}>
-        Glissez jusqu'à 4 Inggrédients vers "Ma cuisine" à cuisiner !! 👨🏼‍🍳
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <span style={{ fontSize: 32 }}>🛒</span>
+        <h1 style={{ color: '#e5e7eb', margin: 0 }}>Épicerie fine</h1>
+      </div>
+      
+      <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 8 }}>
+        Glissez jusqu'à 4 Ingrédients vers "Ma cuisine" à cuisiner !! 👨🏼‍🍳
       </p>
+
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 16,
+        padding: '12px 0',
+        borderBottom: '1px solid #334155',
+        marginBottom: 8
+      }}>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>
+          {hyperliquidTokens.length} tokens Hyperliquid
+        </span>
+        <span style={{ color: '#64748b' }}>•</span>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>
+          {binanceTokens.length} tokens Binance
+        </span>
+        <span style={{ color: '#64748b' }}>•</span>
+        <span style={{ color: '#94a3b8', fontSize: 13 }}>
+          {allTokens.length} total
+        </span>
+      </div>
+
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        <TokenTile symbol="BTC" source="hyperliquid" draggable />
-        <TokenTile symbol="ETH" source="hyperliquid" draggable />
-        <TokenTile symbol="SOL" source="hyperliquid" draggable />
-        <TokenTile symbol="BNB" source="hyperliquid" draggable />
-        <TokenTile symbol="MATIC" source="hyperliquid" draggable />
-        <TokenTile symbol="kPEPE" source="hyperliquid" draggable />
-        <TokenTile symbol="AVAX" source="hyperliquid" draggable />
-        <TokenTile symbol="ATOM" source="hyperliquid" draggable />
-        <TokenTile symbol="APT" source="hyperliquid" draggable />
-        <TokenTile symbol="ARB" source="hyperliquid" draggable />
+        {allTokens.map((token, idx) => (
+          <TokenTile 
+            key={`${token.symbol}:${token.source}:${idx}`}
+            symbol={token.symbol} 
+            source={token.source} 
+            draggable 
+          />
+        ))}
       </div>
     </div>
   )

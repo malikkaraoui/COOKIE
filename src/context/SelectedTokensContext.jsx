@@ -3,7 +3,7 @@
 // Synchronisation Firebase pour utilisateurs authentifiés, localStorage sinon
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { saveSelectedTokens, getSelectedTokens } from '../lib/database/userService'
+import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights } from '../lib/database/userService'
 import { migrateSelectedTokens } from '../lib/database/migrateSelectedTokens'
 
 const SelectedTokensContext = createContext(null)
@@ -89,15 +89,57 @@ export function SelectedTokensProvider({ children }) {
   }
 
   // Retirer un token
-  const removeToken = (symbolWithSource) => {
+  const removeToken = async (symbolWithSource) => {
     if (!user) return // Sécurité : pas de retrait si non connecté
-    setUserTokens(prev => prev.filter(s => s !== symbolWithSource))
+    
+    const newTokens = userTokens.filter(s => s !== symbolWithSource)
+    setUserTokens(newTokens)
+    
+    // Nettoyer aussi portfolioWeights pour ce token
+    if (user?.uid) {
+      try {
+        // Récupérer les poids actuels depuis Firebase
+        const { getPortfolioWeights } = await import('../lib/database/userService')
+        const currentWeights = await getPortfolioWeights(user.uid)
+        
+        if (currentWeights) {
+          // Extraire le symbole du token supprimé
+          const removedSymbol = symbolWithSource.split(':')[0]
+          
+          // Créer nouveau objet sans le token supprimé
+          const updatedWeights = { ...currentWeights }
+          delete updatedWeights[removedSymbol]
+          
+          // Sauvegarder si des poids restent
+          if (Object.keys(updatedWeights).length > 0) {
+            await savePortfolioWeights(user.uid, updatedWeights)
+            console.log('🗑️ Poids supprimés pour', removedSymbol)
+          } else {
+            // Aucun token restant → supprimer portfolioWeights complètement
+            await savePortfolioWeights(user.uid, null)
+            console.log('🗑️ Tous les poids supprimés')
+          }
+        }
+      } catch (error) {
+        console.error('❌ Erreur nettoyage portfolioWeights:', error)
+      }
+    }
   }
 
   // Vider la sélection
-  const clearTokens = () => {
+  const clearTokens = async () => {
     if (!user) return // Sécurité
     setUserTokens([])
+    
+    // Supprimer aussi tous les poids
+    if (user?.uid) {
+      try {
+        await savePortfolioWeights(user.uid, null)
+        console.log('🗑️ Tous les poids supprimés')
+      } catch (error) {
+        console.error('❌ Erreur nettoyage portfolioWeights:', error)
+      }
+    }
   }
 
   const value = {
