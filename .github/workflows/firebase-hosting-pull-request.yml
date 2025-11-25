@@ -13,29 +13,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
 
       - name: Create .env file
         run: |
-          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
-          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
-          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
-          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
-          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
-          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
-          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env
-          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env
-          # echo "VITE_ENVIRONMENT=${{ steps.env.outputs.ENV_NAME }}" >> .env
-          
-          # Hyperliquid config selon environnement
-          if [[ "${{ steps.env.outputs.BUILD_MODE }}" == "production" ]]; then
-            echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid.xyz" >> .env.${{ steps.env.outputs.BUILD_MODE }}
-            echo "VITE_ENABLE_DEBUG_LOGS=false" >> .env.${{ steps.env.outputs.BUILD_MODE }}
-          else
-            echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz" >> .env.${{ steps.env.outputs.BUILD_MODE }}
-            echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.${{ steps.env.outputs.BUILD_MODE }}
-          fi
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env.development
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env.development
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.development
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.development
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.development
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.development
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env.development
+          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env.development
+          echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz" >> .env.development
+          echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.development
+          echo "VITE_ENVIRONMENT=development" >> .env.development
 
-      - run: npm ci && npm run build 
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Build
+        run: npm run build:development 
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
