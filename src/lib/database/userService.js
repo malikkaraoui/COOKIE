@@ -205,3 +205,72 @@ export async function getSelectedTokens(uid) {
   return []
 }
 
+/**
+ * Enregistre le vote d'un utilisateur pour une question quotidienne
+ * Structure: /users/{uid}/votes/{questionId}: { choice, votedAt }
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {string} questionId - ID unique de la question (ex: "Q-2025-11-24")
+ * @param {string} choice - Choix de l'utilisateur ("prudent" ou "risque")
+ * @returns {Promise<void>}
+ */
+export async function saveUserVote(uid, questionId, choice) {
+  if (!uid) throw new Error('UID requis')
+  if (!questionId) throw new Error('questionId requis')
+  if (!choice) throw new Error('choice requis')
+  
+  const voteRef = ref(db, `users/${uid}/votes/${questionId}`)
+  
+  await set(voteRef, {
+    choice,
+    votedAt: Date.now()
+  })
+}
+
+/**
+ * Récupère le vote d'un utilisateur pour une question spécifique
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {string} questionId - ID unique de la question
+ * @returns {Promise<Object|null>} - { choice, votedAt } ou null si pas de vote
+ */
+export async function getUserVote(uid, questionId) {
+  if (!uid || !questionId) return null
+  
+  const voteRef = ref(db, `users/${uid}/votes/${questionId}`)
+  const snapshot = await get(voteRef)
+  
+  return snapshot.exists() ? snapshot.val() : null
+}
+
+/**
+ * Sauvegarde les poids personnalisés du portfolio utilisateur
+ * Structure: /users/{uid}/portfolioWeights: { BTC: 0.5, ETH: 0.3, SOL: 0.2 }
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {Object} weights - Poids par token { BTC: 0.5, ETH: 0.5 }
+ * @returns {Promise<void>}
+ */
+export async function savePortfolioWeights(uid, weights) {
+  if (!uid) throw new Error('UID requis')
+  if (!weights || typeof weights !== 'object') throw new Error('weights doit être un objet')
+  
+  const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
+  
+  await set(weightsRef, weights)
+}
+
+/**
+ * Récupère les poids personnalisés du portfolio utilisateur
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @returns {Promise<Object|null>} - { BTC: 0.5, ETH: 0.5 } ou null si non défini
+ */
+export async function getPortfolioWeights(uid) {
+  if (!uid) return null
+  
+  const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
+  const snapshot = await get(weightsRef)
+  
+  return snapshot.exists() ? snapshot.val() : null
+}

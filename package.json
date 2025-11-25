@@ -12,7 +12,8 @@
     "build:staging": "vite build --mode staging",
     "lint": "eslint .",
     "preview": "vite preview",
-    "preview:staging": "vite preview --mode staging"
+    "preview:staging": "vite preview --mode staging",
+    "deploy:firebase": "npm run build && firebase deploy --only hosting"
   },
   "dependencies": {
     "@dataconnect/generated": "file:src/dataconnect-generated",

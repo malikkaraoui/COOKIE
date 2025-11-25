@@ -1,0 +1,441 @@
+/**
+ * La Marmite - Page de vote communautaire
+ * Épargne collective avec décisions votées quotidiennement
+ * Nécessite authentification pour voter
+ */
+
+import { useState, useEffect } from 'react'
+import { ChefHat, LogIn } from 'lucide-react'
+import { useAuth } from '../hooks/useAuth'
+import { saveUserVote, getUserVote } from '../lib/database/userService'
+
+export default function LaMarmite() {
+  const { user } = useAuth()
+  
+  // ID unique de la question du jour (format: Q-YYYY-MM-DD)
+  const questionId = `Q-${new Date().toISOString().split('T')[0]}`
+  
+  // Calculer le temps restant jusqu'à 19h Paris
+  const calculateTimeLeft = () => {
+    const now = new Date()
+    
+    // Convertir en heure de Paris (UTC+1 ou UTC+2 selon DST)
+    const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
+    
+    // Définir 19h00 aujourd'hui
+    const deadline = new Date(parisTime)
+    deadline.setHours(19, 0, 0, 0)
+    
+    // Si on est déjà après 19h, le vote est terminé
+    if (parisTime >= deadline) {
+      return 0
+    }
+    
+    // Calculer la différence en secondes
+    const diff = Math.floor((deadline - parisTime) / 1000)
+    return Math.max(0, diff)
+  }
+
+  // Vérifier si on est dans la plage horaire de vote (8h-19h Paris)
+  const isVotingTime = () => {
+    const now = new Date()
+    const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
+    const hour = parisTime.getHours()
+    
+    return hour >= 8 && hour < 19
+  }
+
+  const [timeLeft, setTimeLeft] = useState(calculateTimeLeft())
+  const [canVote, setCanVote] = useState(isVotingTime())
+  const [selectedVote, setSelectedVote] = useState(null)
+  const [hasVoted, setHasVoted] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+
+  // Charger le vote existant de l'utilisateur au montage
+  useEffect(() => {
+    if (user) {
+      getUserVote(user.uid, questionId).then(vote => {
+        if (vote) {
+          setSelectedVote(vote.choice)
+          setHasVoted(true)
+        }
+      }).catch(err => {
+        console.error('Erreur chargement vote:', err)
+      })
+    }
+  }, [user, questionId])
+
+  // Décompte du temps
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const newTimeLeft = calculateTimeLeft()
+      const newCanVote = isVotingTime()
+      
+      setTimeLeft(newTimeLeft)
+      setCanVote(newCanVote)
+      
+      // Si le temps est écoulé ou hors plage horaire, on arrête le timer
+      if (newTimeLeft === 0 || !newCanVote) {
+        clearInterval(interval)
+      }
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [])
+
+  const formatTime = (seconds) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${h}h ${m}m ${s}s`
+  }
+
+  const handleSelectVote = (choice) => {
+    // Permettre de changer de sélection tant qu'on n'a pas validé
+    if (!hasVoted) {
+      setSelectedVote(choice)
+      setShowLoginPrompt(false)
+    }
+  }
+
+  const handleConfirmVote = async () => {
+    // Vérifier si on est dans la plage horaire
+    if (!canVote) {
+      alert('Les votes sont possibles uniquement entre 8h et 19h (heure de Paris)')
+      return
+    }
+
+    // Vérifier si l'utilisateur est connecté
+    if (!user) {
+      setShowLoginPrompt(true)
+      return
+    }
+
+    // Vérifier qu'un choix est sélectionné
+    if (!selectedVote) {
+      return
+    }
+
+    setIsLoading(true)
+    
+    try {
+      // Sauvegarder le vote dans Firebase
+      await saveUserVote(user.uid, questionId, selectedVote)
+      
+      setHasVoted(true)
+      setShowLoginPrompt(false)
+    } catch (error) {
+      console.error('Erreur lors du vote:', error)
+      alert('Erreur lors de l\'enregistrement du vote. Veuillez réessayer.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  return (
+    <div style={{ 
+      padding: '60px 40px',
+      maxWidth: '1000px',
+      margin: '0 auto',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: '40px'
+    }}>
+      {/* Titre */}
+      <h1 style={{ 
+        fontSize: '48px', 
+        fontWeight: 'bold',
+        color: '#fff',
+        textAlign: 'center',
+        margin: 0
+      }}>
+        La Marmite Communautaire
+      </h1>
+
+      {/* Description */}
+      <p style={{ 
+        color: '#94a3b8', 
+        fontSize: '18px',
+        textAlign: 'center',
+        lineHeight: '1.6',
+        maxWidth: '700px',
+        margin: 0
+      }}>
+        Une épargne gérée par la sagesse collective. Votez chaque jour, participez aux décisions, et partagez les rendements avec toute la communauté.
+      </p>
+
+      {/* Marmite géante */}
+      <div style={{
+        fontSize: '180px',
+        lineHeight: 1,
+        filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.5))',
+        animation: 'float 3s ease-in-out infinite',
+        marginTop: '20px',
+        marginBottom: '20px'
+      }}>
+        🍲
+      </div>
+
+      {/* Section Vote */}
+      <div style={{
+        width: '100%',
+        maxWidth: '800px',
+        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        borderRadius: '24px',
+        padding: '40px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        border: '1px solid #334155'
+      }}>
+        {/* Header Question */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          marginBottom: '24px',
+          paddingBottom: '24px',
+          borderBottom: '1px solid #334155'
+        }}>
+          <ChefHat size={32} color="#f59e0b" strokeWidth={2} />
+          <div style={{ flex: 1 }}>
+            <h2 style={{ 
+              color: '#f59e0b', 
+              fontSize: '24px',
+              fontWeight: 'bold',
+              margin: 0,
+              marginBottom: '8px'
+            }}>
+              Question du Chef
+            </h2>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '12px',
+              color: '#94a3b8',
+              fontSize: '14px'
+            }}>
+              <span>Vote quotidien (8h-19h)</span>
+              <span>•</span>
+              {!canVote ? (
+                <span style={{ color: '#ef4444', fontWeight: '600' }}>
+                  Vote fermé
+                </span>
+              ) : (
+                <span style={{ 
+                  color: timeLeft < 3600 ? '#ef4444' : '#22c55e',
+                  fontWeight: '600'
+                }}>
+                  Expire dans {formatTime(timeLeft)}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Question */}
+        <h3 style={{
+          color: '#e5e7eb',
+          fontSize: '22px',
+          fontWeight: '600',
+          marginBottom: '32px',
+          textAlign: 'center'
+        }}>
+          Quelle stratégie pour la marmite aujourd'hui ?
+        </h3>
+
+        {/* Options de vote */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* Message hors horaire */}
+          {!canVote && !hasVoted && (
+            <div style={{
+              padding: '20px',
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '2px solid #ef4444',
+              borderRadius: '12px',
+              color: '#ef4444',
+              textAlign: 'center',
+              fontSize: '14px',
+              fontWeight: '600',
+              marginBottom: '8px'
+            }}>
+              ⏰ Les votes sont ouverts de 8h00 à 19h00 (heure de Paris)
+            </div>
+          )}
+
+          {/* Prompt connexion */}
+          {showLoginPrompt && !user && (
+            <div style={{
+              padding: '20px',
+              background: 'rgba(59, 130, 246, 0.1)',
+              border: '2px solid #3b82f6',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '8px'
+            }}>
+              <LogIn size={24} color="#3b82f6" />
+              <div>
+                <div style={{ color: '#3b82f6', fontWeight: '600', marginBottom: '4px' }}>
+                  Connexion requise
+                </div>
+                <div style={{ color: '#94a3b8', fontSize: '14px' }}>
+                  Veuillez vous connecter pour valider votre vote et participer aux décisions de la communauté.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Option 1 - Prudent */}
+          <button
+            onClick={() => handleSelectVote('prudent')}
+            disabled={hasVoted || !canVote}
+            style={{
+              background: selectedVote === 'prudent' 
+                ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
+                : 'linear-gradient(135deg, #334155 0%, #1e293b 100%)',
+              border: selectedVote === 'prudent' ? '2px solid #22c55e' : '2px solid #475569',
+              borderRadius: '16px',
+              padding: '24px',
+              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              opacity: (hasVoted && selectedVote !== 'prudent') || !canVote ? 0.5 : 1,
+              textAlign: 'left'
+            }}
+            onMouseEnter={(e) => {
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
+            }}
+            onMouseLeave={(e) => {
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
+            }}
+          >
+            <div style={{ 
+              color: selectedVote === 'prudent' ? '#fff' : '#e5e7eb', 
+              fontSize: '16px',
+              fontWeight: '600',
+              marginBottom: '8px'
+            }}>
+              🛡️ Feu doux - Stratégie prudente
+            </div>
+            <div style={{ 
+              color: selectedVote === 'prudent' ? '#f0fdf4' : '#94a3b8', 
+              fontSize: '14px',
+              lineHeight: '1.5'
+            }}>
+              On reste prudent et on laisse la marmite à feu doux. Stratégie défensive avec plus de cash et d'obligations.
+            </div>
+          </button>
+
+          {/* Option 2 - Risqué */}
+          <button
+            onClick={() => handleSelectVote('risque')}
+            disabled={hasVoted || !canVote}
+            style={{
+              background: selectedVote === 'risque' 
+                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
+                : 'linear-gradient(135deg, #334155 0%, #1e293b 100%)',
+              border: selectedVote === 'risque' ? '2px solid #ef4444' : '2px solid #475569',
+              borderRadius: '16px',
+              padding: '24px',
+              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              opacity: (hasVoted && selectedVote !== 'risque') || !canVote ? 0.5 : 1,
+              textAlign: 'left'
+            }}
+            onMouseEnter={(e) => {
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
+            }}
+            onMouseLeave={(e) => {
+              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
+            }}
+          >
+            <div style={{ 
+              color: selectedVote === 'risque' ? '#fff' : '#e5e7eb', 
+              fontSize: '16px',
+              fontWeight: '600',
+              marginBottom: '8px'
+            }}>
+              🌶️ Feu vif - Stratégie offensive
+            </div>
+            <div style={{ 
+              color: selectedVote === 'risque' ? '#fef2f2' : '#94a3b8', 
+              fontSize: '14px',
+              lineHeight: '1.5'
+            }}>
+              On ajoute une pincée de piment et on augmente le risque pour chercher plus de rendement. Plus d'action tech et de crypto.
+            </div>
+          </button>
+        </div>
+
+        {/* Bouton de validation */}
+        {!hasVoted && canVote && (
+          <button
+            onClick={handleConfirmVote}
+            disabled={!selectedVote || isLoading}
+            style={{
+              marginTop: '24px',
+              width: '100%',
+              padding: '20px',
+              background: selectedVote && !isLoading
+                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
+                : 'linear-gradient(135deg, #475569 0%, #334155 100%)',
+              border: 'none',
+              borderRadius: '16px',
+              color: '#fff',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              cursor: selectedVote && !isLoading ? 'pointer' : 'not-allowed',
+              transition: 'all 0.3s ease',
+              opacity: !selectedVote || isLoading ? 0.5 : 1,
+              boxShadow: selectedVote && !isLoading ? '0 8px 24px rgba(59, 130, 246, 0.3)' : 'none'
+            }}
+            onMouseEnter={(e) => {
+              if (selectedVote && !isLoading) {
+                e.currentTarget.style.transform = 'translateY(-2px)'
+                e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.4)'
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (selectedVote && !isLoading) {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 8px 24px rgba(59, 130, 246, 0.3)'
+              }
+            }}
+          >
+            {isLoading ? '⏳ Enregistrement...' : '✅ Valider mon vote'}
+          </button>
+        )}
+
+        {/* Confirmation vote */}
+        {hasVoted && user && (
+          <div style={{
+            marginTop: '24px',
+            padding: '16px',
+            background: 'rgba(34, 197, 94, 0.1)',
+            border: '1px solid #22c55e',
+            borderRadius: '12px',
+            color: '#22c55e',
+            textAlign: 'center',
+            fontSize: '14px',
+            fontWeight: '600'
+          }}>
+            ✅ Vote enregistré ! Merci !
+          </div>
+        )}
+      </div>
+
+      {/* Animation CSS */}
+      <style>{`
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-20px);
+          }
+        }
+      `}</style>
+    </div>
+  )
+}
