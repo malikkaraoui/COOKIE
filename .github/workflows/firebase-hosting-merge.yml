@@ -1,0 +1,102 @@
+# ====================================
+# FIREBASE HOSTING - AUTO DEPLOY ON MERGE
+# ====================================
+# Déploiement automatique sur Firebase Hosting
+# Déclenché par : push sur branches main, release, dev
+# 
+# 🔴 PRODUCTION (main) → https://cookie1-b3592.web.app
+# 🟡 STAGING (release) → channel staging
+# 🔵 DEVELOPMENT (dev) → channel dev
+
+name: Deploy to Firebase Hosting on merge
+
+on:
+  push:
+    branches:
+      - main
+      - release
+      - dev
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Determine environment
+        id: env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "BUILD_MODE=production" >> $GITHUB_OUTPUT
+            echo "CHANNEL_ID=live" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/release" ]]; then
+            echo "BUILD_MODE=staging" >> $GITHUB_OUTPUT
+            echo "CHANNEL_ID=staging" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/dev" ]]; then
+            echo "BUILD_MODE=development" >> $GITHUB_OUTPUT
+            echo "CHANNEL_ID=dev" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create .env file
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_BINANCE_API_URL=https://api.binance.com" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          echo "VITE_ENVIRONMENT=${{ steps.env.outputs.ENV_NAME }}" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          
+          # Hyperliquid config selon environnement
+          if [[ "${{ steps.env.outputs.BUILD_MODE }}" == "production" ]]; then
+            echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid.xyz" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+            echo "VITE_ENABLE_DEBUG_LOGS=false" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          else
+            echo "VITE_HYPERLIQUID_API_URL=https://api.hyperliquid-testnet.xyz" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+            echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.${{ steps.env.outputs.BUILD_MODE }}
+          fi
+
+      - name: Build
+        run: npm run build:${{ steps.env.outputs.BUILD_MODE }}
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+          channelId: ${{ steps.env.outputs.CHANNEL_ID }}
+          projectId: cookie1-b3592
+        env:
+          FIREBASE_CLI_EXPERIMENTS: webframeworks
+
+# ====================================
+# SECRETS REQUIS DANS GITHUB
+# ====================================
+# 
+# Settings → Secrets and variables → Actions → New repository secret
+#
+# 🔥 Firebase
+# - FIREBASE_SERVICE_ACCOUNT (JSON de Firebase Console)
+# - VITE_FIREBASE_API_KEY
+# - VITE_FIREBASE_AUTH_DOMAIN
+# - VITE_FIREBASE_PROJECT_ID
+# - VITE_FIREBASE_STORAGE_BUCKET
+# - VITE_FIREBASE_MESSAGING_SENDER_ID
+# - VITE_FIREBASE_APP_ID
+# - VITE_FIREBASE_DATABASE_URL
