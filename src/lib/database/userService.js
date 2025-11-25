@@ -242,3 +242,35 @@ export async function getUserVote(uid, questionId) {
   
   return snapshot.exists() ? snapshot.val() : null
 }
+
+/**
+ * Sauvegarde les poids personnalisés du portfolio utilisateur
+ * Structure: /users/{uid}/portfolioWeights: { BTC: 0.5, ETH: 0.3, SOL: 0.2 }
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @param {Object} weights - Poids par token { BTC: 0.5, ETH: 0.5 }
+ * @returns {Promise<void>}
+ */
+export async function savePortfolioWeights(uid, weights) {
+  if (!uid) throw new Error('UID requis')
+  if (!weights || typeof weights !== 'object') throw new Error('weights doit être un objet')
+  
+  const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
+  
+  await set(weightsRef, weights)
+}
+
+/**
+ * Récupère les poids personnalisés du portfolio utilisateur
+ * 
+ * @param {string} uid - User ID Firebase Auth
+ * @returns {Promise<Object|null>} - { BTC: 0.5, ETH: 0.5 } ou null si non défini
+ */
+export async function getPortfolioWeights(uid) {
+  if (!uid) return null
+  
+  const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
+  const snapshot = await get(weightsRef)
+  
+  return snapshot.exists() ? snapshot.val() : null
+}

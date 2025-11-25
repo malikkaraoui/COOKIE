@@ -7,45 +7,21 @@ import { useMemo } from 'react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
 import PortfolioResults from '../elements/PortfolioResults'
+import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
+import { buildTokensData } from '../lib/portfolio/portfolioService'
 import { useMarketData } from '../context/MarketDataContext'
-
-// Couleurs par token
-const TOKEN_COLORS = {
-  BTC: '#f7931a',
-  ETH: '#627eea',
-  SOL: '#14f195',
-  BNB: '#f3ba2f',
-  DOGE: '#c2a633',
-  MATIC: '#8247e5',
-  kPEPE: '#4caf50',
-  AVAX: '#e84142',
-  ATOM: '#2e3148',
-  APT: '#00bfff'
-}
 
 export default function Page2() {
   const { selectedTokens, removeToken, count } = useSelectedTokens()
   const { user } = useAuth()
   const { getToken } = useMarketData()
   
-  // Créer tokensData à partir des tokens sélectionnés
+  // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
-    return selectedTokens.map(symbolWithSource => {
-      const [symbol] = symbolWithSource.includes(':') 
-        ? symbolWithSource.split(':') 
-        : [symbolWithSource, 'hyperliquid']
-      
-      const tokenData = getToken(symbol)
-      
-      return {
-        symbol,
-        deltaPct: tokenData?.deltaPct || 0,
-        color: TOKEN_COLORS[symbol] || '#666'
-      }
-    })
+    return buildTokensData(selectedTokens, getToken)
   }, [selectedTokens, getToken])
   
   // Simulateur de portfolio avec les tokens dynamiques
@@ -217,38 +193,7 @@ export default function Page2() {
           📊 Visualisation Portfolio
         </h3>
         
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center',
-          gap: '40px',
-          flexWrap: 'wrap'
-        }}>
-          {/* Pie Chart */}
-          <svg width="240" height="240" viewBox="0 0 240 240">
-            <PieChart weights={weights} tokensData={tokensData} />
-          </svg>
-
-          {/* Légende */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {tokensData.map(token => (
-              <div key={token.symbol} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '20px',
-                  height: '20px',
-                  borderRadius: '4px',
-                  background: token.color
-                }} />
-                <span style={{ color: '#e5e7eb', fontSize: '14px', fontWeight: '600' }}>
-                  {token.symbol}
-                </span>
-                <span style={{ color: '#94a3b8', fontSize: '14px' }}>
-                  {((weights[token.symbol] || 0) * 100).toFixed(1)}%
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <PortfolioChart weights={weights} tokensData={tokensData} />
       </div>
 
       {/* Tokens sélectionnés (ancien affichage) */}
@@ -314,75 +259,5 @@ export default function Page2() {
         </div>
       )}
     </div>
-  )
-}
-
-// Composant Pie Chart SVG
-function PieChart({ weights, tokensData }) {
-  let currentAngle = -90 // Commencer en haut
-
-  return (
-    <g>
-      {/* Cercle de fond */}
-      <circle cx="120" cy="120" r="100" fill="#0f172a" />
-      
-      {/* Slices */}
-      {tokensData.map(token => {
-        const weight = weights[token.symbol] || 0
-        const angle = weight * 360
-        
-        if (weight === 0) return null
-
-        // Si 100%, dessiner un cercle complet au lieu d'un arc
-        if (weight >= 0.9999) {
-          return (
-            <circle
-              key={token.symbol}
-              cx="120"
-              cy="120"
-              r="100"
-              fill={token.color}
-              stroke="#0f172a"
-              strokeWidth="2"
-            />
-          )
-        }
-
-        // Calcul des coordonnées de l'arc
-        const startAngle = currentAngle
-        const endAngle = currentAngle + angle
-        currentAngle = endAngle
-
-        const startRad = (startAngle * Math.PI) / 180
-        const endRad = (endAngle * Math.PI) / 180
-
-        const x1 = 120 + 100 * Math.cos(startRad)
-        const y1 = 120 + 100 * Math.sin(startRad)
-        const x2 = 120 + 100 * Math.cos(endRad)
-        const y2 = 120 + 100 * Math.sin(endRad)
-
-        const largeArcFlag = angle > 180 ? 1 : 0
-
-        const pathData = [
-          `M 120 120`,
-          `L ${x1} ${y1}`,
-          `A 100 100 0 ${largeArcFlag} 1 ${x2} ${y2}`,
-          `Z`
-        ].join(' ')
-
-        return (
-          <path
-            key={token.symbol}
-            d={pathData}
-            fill={token.color}
-            stroke="#0f172a"
-            strokeWidth="2"
-          />
-        )
-      })}
-
-      {/* Cercle central */}
-      <circle cx="120" cy="120" r="40" fill="#1e293b" />
-    </g>
   )
 }
