@@ -51,7 +51,7 @@ jobs:
             echo "VITE_ENABLE_DEBUG_LOGS=true" >> .env.${{ steps.env.outputs.BUILD_MODE }}
           fi
 
-      - run: npm ci && npm run build
+      - run: npm ci && npm run build --mode ${{ steps.env.outputs.BUILD_MODE }}
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
