@@ -1,18 +1,23 @@
 /**
  * Page Binance - Liste des tokens depuis Binance Spot API
  * Affiche tous les tokens de la whitelist (30 tokens) avec prix et variation 24h
- * Support drag & drop vers "Ma cuisine"
+ * Support drag & drop (desktop) et clic (mobile)
  * 
  * Utilise src/config/binanceTrackedTokens.js comme source
  */
 
+import { useState, useEffect } from 'react'
 import { useBinanceToken } from '../hooks/useBinanceToken'
 import { useDraggable } from '../hooks/useDraggable'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
+import { useSelectedTokens } from '../context/SelectedTokensContext'
+import Toast from '../components/Toast'
 
-function BinanceTokenCard({ tokenId }) {
+function BinanceTokenCard({ tokenId, isMobile, onAddToken }) {
   const { price, deltaPct, loading, error } = useBinanceToken(tokenId)
-  const { dragHandlers, dragProps } = useDraggable(true)
+  const { dragHandlers, dragProps } = useDraggable(!isMobile)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [toast, setToast] = useState(null)
 
   // Couleurs par token (palette étendue pour 30 tokens)
   const tokenColors = {
@@ -39,7 +44,28 @@ function BinanceTokenCard({ tokenId }) {
 
   const color = tokenColors[tokenId] || '#888'
 
+  // Gestion clic mobile
+  const handleClick = (e) => {
+    if (isMobile && onAddToken) {
+      e.preventDefault()
+      const result = onAddToken(`${tokenId}:binance`)
+      if (result?.success) {
+        setIsAnimating(true)
+        setTimeout(() => setIsAnimating(false), 600)
+        setToast({ message: `${tokenId} ajouté !`, type: 'success' })
+        console.log('✅', tokenId, 'ajouté !')
+      } else if (result?.reason === 'already_exists') {
+        setToast({ message: `${tokenId} déjà ajouté`, type: 'warning' })
+        console.warn('⚠️', tokenId, 'déjà ajouté')
+      } else if (result?.reason === 'max_reached') {
+        setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+        console.warn('⚠️ Maximum 4 tokens')
+      }
+    }
+  }
+
   return (
+    <>
     <div 
       style={{
         background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
@@ -47,12 +73,16 @@ function BinanceTokenCard({ tokenId }) {
         padding: '24px',
         boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
         border: `1px solid ${color}33`,
-        cursor: 'grab',
+        cursor: isMobile ? 'pointer' : 'grab',
         transition: 'transform 0.2s ease',
-        ...dragProps
+        userSelect: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none',
+        ...(isMobile ? {} : dragProps)
       }}
-      {...dragHandlers}
-      onDragStart={(e) => dragHandlers.onDragStart(e, `${tokenId}:binance`)}
+      {...(isMobile ? {} : dragHandlers)}
+      onClick={isMobile ? handleClick : undefined}
+      onDragStart={isMobile ? undefined : (e) => dragHandlers.onDragStart(e, `${tokenId}:binance`)}
       onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
       onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
     >
@@ -103,10 +133,30 @@ function BinanceTokenCard({ tokenId }) {
         Live • Binance
       </div>
     </div>
+    
+    {/* Toast notification */}
+    {toast && (
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast(null)} 
+      />
+    )}
+  </>
   )
 }
 
 export default function Page4() {
+  const { addToken } = useSelectedTokens()
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   return (
     <div style={{ padding: '40px', width: '100%', overflowY: 'auto' }}>
       <h1 style={{ 
@@ -130,7 +180,12 @@ export default function Page4() {
         maxWidth: '1400px'
       }}>
         {BINANCE_DEFAULT_TOKENS.map(token => (
-          <BinanceTokenCard key={token.id} tokenId={token.id} />
+          <BinanceTokenCard 
+            key={token.id} 
+            tokenId={token.id}
+            isMobile={isMobile}
+            onAddToken={addToken}
+          />
         ))}
       </div>
     </div>

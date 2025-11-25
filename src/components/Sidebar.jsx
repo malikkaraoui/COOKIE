@@ -116,12 +116,17 @@ export default function Sidebar() {
       {isMobile && (
         <button
           className="mobile-menu-toggle"
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            console.log('Hamburger clicked, current state:', isMobileMenuOpen)
+            setIsMobileMenuOpen(!isMobileMenuOpen)
+          }}
           style={{
             position: 'fixed',
             top: '20px',
             left: '20px',
-            zIndex: 1001,
+            zIndex: 10000,
             background: '#000',
             border: 'none',
             borderRadius: '8px',
@@ -130,7 +135,9 @@ export default function Sidebar() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+            boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+            WebkitTapHighlightColor: 'transparent',
+            touchAction: 'manipulation'
           }}
         >
           {isMobileMenuOpen ? (

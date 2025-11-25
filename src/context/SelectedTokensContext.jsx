@@ -62,30 +62,35 @@ export function SelectedTokensProvider({ children }) {
 
   // Ajouter un token
   const addToken = (symbolWithSource) => {
-    if (!user) return // Sécurité : pas d'ajout si non connecté
+    if (!user) {
+      console.warn('Utilisateur non connecté')
+      return { success: false, reason: 'not_logged_in' }
+    }
     
-    setUserTokens(prev => {
-      // Extraire le symbole (avant le ':')
-      const symbol = symbolWithSource.split(':')[0]
-      
-      // Vérifier si le symbole existe déjà (peu importe la source)
-      const symbolExists = prev.some(token => token.split(':')[0] === symbol)
-      if (symbolExists) {
-        console.warn(`Le token ${symbol} est déjà dans votre cuisine`)
-        return prev
-      }
-      
-      // Éviter doublons exacts (même symbol:source)
-      if (prev.includes(symbolWithSource)) return prev
-      
-      // Max 4 tokens
-      if (prev.length >= MAX_TOKENS) {
-        console.warn(`Maximum ${MAX_TOKENS} tokens`)
-        return prev
-      }
-      
-      return [...prev, symbolWithSource]
-    })
+    // Extraire le symbole (avant le ':')
+    const symbol = symbolWithSource.split(':')[0]
+    
+    // Vérifier si le symbole existe déjà (peu importe la source)
+    const symbolExists = userTokens.some(token => token.split(':')[0] === symbol)
+    if (symbolExists) {
+      console.warn(`Le token ${symbol} est déjà dans votre cuisine`)
+      return { success: false, reason: 'already_exists', symbol }
+    }
+    
+    // Éviter doublons exacts (même symbol:source)
+    if (userTokens.includes(symbolWithSource)) {
+      return { success: false, reason: 'already_exists', symbol }
+    }
+    
+    // Max 4 tokens
+    if (userTokens.length >= MAX_TOKENS) {
+      console.warn(`Maximum ${MAX_TOKENS} tokens`)
+      return { success: false, reason: 'max_reached', maxTokens: MAX_TOKENS }
+    }
+    
+    // Ajouter le token
+    setUserTokens(prev => [...prev, symbolWithSource])
+    return { success: true, symbol }
   }
 
   // Retirer un token
