@@ -7,5 +7,5 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  envDir: './config/credentials', // Dossier unique pour toutes les clés privées
+  // Plus besoin de envDir, tout est en dur dans firebase.js
 })
