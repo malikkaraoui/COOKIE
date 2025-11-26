@@ -6,6 +6,7 @@
 import { useMemo, useState, useEffect } from 'react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
+import TokenWeightRow from '../elements/TokenWeightRow'
 import PortfolioResults from '../elements/PortfolioResults'
 import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
@@ -63,7 +64,8 @@ export default function Page2() {
   }, [])
   const { selectedTokens, removeToken, count } = useSelectedTokens()
   const { user } = useAuth()
-  const { getToken } = useMarketData()
+  // Récupérer aussi 'tokens' pour re-mémoïser quand les prix/variations changent
+  const { getToken, tokens } = useMarketData()
   
   // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
@@ -75,15 +77,26 @@ export default function Page2() {
       
       // Récupérer données de marché depuis MarketDataContext
       // (qui contient maintenant Hyperliquid ET Binance)
-      const marketData = getToken(symbol)
+      // Utiliser directement l'état 'tokens' pour que le useMemo réagisse
+      const marketData = (tokens && tokens[symbol]) || getToken(symbol)
       
       // Récupérer config statique
       const config = getTokenConfig(symbol)
       
+      // S'assurer que deltaPct est bien numérique (Firebase peut renvoyer une string)
+      let rawDeltaPct = marketData && marketData.deltaPct != null ? marketData.deltaPct : 0
+      const numericDeltaPct = typeof rawDeltaPct === 'string' ? parseFloat(rawDeltaPct) : rawDeltaPct
+
+      // Filet de sécurité : recalcul si deltaPct demeure 0 mais price & prevDayPx présents
+      let finalDeltaPct = numericDeltaPct
+      if ((finalDeltaPct === 0 || isNaN(finalDeltaPct)) && marketData?.price != null && marketData?.prevDayPx != null && marketData.prevDayPx !== 0) {
+        finalDeltaPct = ((marketData.price / marketData.prevDayPx - 1) * 100)
+      }
+
       const tokenData = {
         symbol,
         source,
-        deltaPct: marketData?.deltaPct || 0,
+        deltaPct: finalDeltaPct || 0,
         color: config?.color || '#666',
         name: config?.name || symbol,
         price: marketData?.price || null,
@@ -93,8 +106,11 @@ export default function Page2() {
       // Log pour debug
       console.log(`🔍 Page2 tokensData ${symbol}:`, {
         source,
-        deltaPct: tokenData.deltaPct,
+        rawDeltaPct,
+        numericDeltaPct,
+        finalDeltaPct: tokenData.deltaPct,
         price: tokenData.price,
+        prevDayPx: marketData?.prevDayPx,
         marketDataSource: marketData?.source
       })
       
@@ -102,7 +118,7 @@ export default function Page2() {
     })
     
     return data
-  }, [selectedTokens, getToken])
+  }, [selectedTokens, getToken, tokens])
   
   // Simulateur de portfolio avec les tokens dynamiques
   const {
@@ -221,15 +237,15 @@ export default function Page2() {
           </button>
         </div>
 
-        {/* Sliders dynamiques */}
+        {/* Sliders dynamiques (branchés sur la bonne source par symbole) */}
         {tokensData.map(token => (
-          <TokenWeightSlider
+          <TokenWeightRow
             key={token.symbol}
             symbol={token.symbol}
+            source={token.source}
             weight={weights[token.symbol] || 0}
             onChange={(newWeight) => setWeight(token.symbol, newWeight)}
             color={token.color}
-            apy={token.deltaPct}
           />
         ))}
 

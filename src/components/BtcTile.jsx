@@ -17,8 +17,10 @@ export default function BtcTile({ price, deltaAbs, deltaPct, status, source, err
   else if (status === 'cached') statusLabel = 'Cache'
   else if (status === 'loading') statusLabel = 'Initialisation'
 
-  // Source (hyperliquid vs cache navigateur)
-  const sourceLabel = source === 'live' ? 'Hyperliquid' : 'Navigateur'
+  // Source (Hyperliquid/Binance vs cache navigateur)
+  const sourceLabel = source === 'hyperliquid' 
+    ? 'Hyperliquid' 
+    : (source === 'binance' ? 'Binance' : 'Navigateur')
 
   return (
     <div style={styles.card}>

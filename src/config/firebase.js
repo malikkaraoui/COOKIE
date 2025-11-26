@@ -4,6 +4,7 @@
 import { initializeApp } from 'firebase/app'
 import { getAuth, GoogleAuthProvider } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
+import { getFunctions } from 'firebase/functions' 
 
 const firebaseConfig = {
   apiKey: "AIzaSyAoXkM4EAk7AcbXONYQiTDNVz-ekvQRmag",
@@ -23,3 +24,6 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getDatabase(app) // Realtime Database (plus simple que Firestore)
 export const googleProvider = new GoogleAuthProvider()
+
+// 👇 NOUVEAU : Cloud Functions (pour Stripe)
+export const functions = getFunctions(app)

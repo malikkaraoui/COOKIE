@@ -57,9 +57,10 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   else if (token.status === 'cached') statusLabel = 'Cache'
   else if (token.status === 'loading') statusLabel = 'Initialisation'
 
-  // Source lisible
+  // Source lisible (affiche correctement l'origine des données)
+  // hyperliquid → Hyperliquid, binance → Binance, sinon Navigateur (cache/local)
   let sourceLabel = 'Navigateur'
-  if (token.source === 'live') sourceLabel = 'Hyperliquid'
+  if (token.source === 'hyperliquid') sourceLabel = 'Hyperliquid'
   else if (token.source === 'binance') sourceLabel = 'Binance'
 
   // Gestion clic mobile

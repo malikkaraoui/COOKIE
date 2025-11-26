@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
-import { ShoppingBasket, ChefHat, Soup, Menu, X } from 'lucide-react'
+import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
 
 export default function Sidebar() {
   // État mobile menu
@@ -108,6 +108,12 @@ export default function Sidebar() {
       label: 'La Marmite',
       icon: Soup
     },
+    // Lien Stripe visible uniquement pour les utilisateurs connectés
+    ...(user ? [{
+      to: '/Stripe',
+      label: 'Acheter Premium',
+      icon: CreditCard
+    }] : []),
   ]
 
   return (
