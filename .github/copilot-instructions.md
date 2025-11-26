@@ -20,7 +20,8 @@
 | **Binance Spot API** | Prix BNB + tokens BEP-20 | BNB, CAKE, DOGE, SHIB, etc. |
 | **Firebase RTDB** | Cache prix + auth users | Tous |
 
-⚠️ **NOWNodes/BSC** : Uniquement balances on-chain, JAMAIS pour prix de marché.
+⚠️ **NOWNodes/BSC** : Uniquement balances on-chain, JAMAIS pour prix de marché.  
+ℹ️ **Statut actuel** : NOWNodes n’est pas utilisé pour l’instant dans COOKIE.
 
 ---
 

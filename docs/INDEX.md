@@ -99,6 +99,10 @@
 
 ---
 
+<!-- Intégrations & APIs externes (désactivé pour NOWNodes pour le moment) -->
+
+---
+
 ## 🎯 Par Persona
 
 ### 👨‍💻 Développeur Frontend Junior
