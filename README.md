@@ -99,7 +99,7 @@ COOKIE/
 #### 🧩 Modularité Stricte
 - **Context API** pour l'état global (AuthContext, NavigationContext)
 - **Hooks personnalisés** pour la logique réutilisable
-- **Service Layer** pour les appels Firestore/API
+- **Service Layer** pour les appels Firebase/API
 - **Composants atomiques** dans `/elements`
 
 #### 🔒 Sécurité
@@ -174,7 +174,6 @@ VITE_HYPERLIQUID_API_KEY=your_testnet_api_key
 VITE_HYPERLIQUID_API_SECRET=your_testnet_api_secret
 ```
 
-│   └── REALTIME_DATABASE.md       # Architecture Firebase Realtime Database
 > - Tous les fichiers `.env.*` sont dans `.gitignore` pour protéger vos clés
 > - **Development** utilise testnet Hyperliquid (faux argent 🧪)
 > - **Production** utilise mainnet Hyperliquid (vrai argent ⚠️)
@@ -229,51 +228,72 @@ npm run lint             # Linter le code
 
 ---
 
-## 🔥 Firebase Configuration
+## 🔥 Firebase Configuration (Realtime Database)
 
 ### Authentication
 - **Providers activés** : Google
 - **Domaines autorisés** : localhost, votre-domaine.com
 
-### Firestore Database
+### Schéma RTDB
 ```
-users/{userId}
-  ├── uid: string (Firebase Auth UID)
-  ├── email: string
-  ├── firstName: string
-  ├── lastName: string
-  ├── photoURL: string
-  ├── birthdate: timestamp (optional)
-  ├── createdAt: timestamp
-  └── updatedAt: timestamp
+/users/{uid}
+  email: string
+  displayName: string
+  photoURL: string
+  createdAt: number
+
+/priceCache/{coin}
+  price: number
+  prevDayPx: number
+  deltaAbs: number
+  deltaPct: number
+  timestamp: number
+  source: string
+
+/priceTokenHyper/{coin}  // données Hyperliquid
+/priceTokenBinance/{coin} // données Binance
 ```
 
-### Règles de Sécurité
+### Règles de Sécurité (RTDB)
 
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      // Lecture : seulement le propriétaire
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Création : seulement si UID correspond
-      allow create: if request.auth != null 
-                    && request.auth.uid == userId
-                    && request.resource.data.uid == userId;
-      
-      // Mise à jour : propriétaire uniquement + champs immuables
-      allow update: if request.auth != null 
-                    && request.auth.uid == userId
-                    && request.resource.data.uid == resource.data.uid;
-      
-      // Suppression : interdite
-      allow delete: if false;
+```json
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "$uid === auth.uid"
+      }
+    },
+    "priceCache": {
+      "$coin": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "priceTokenHyper": {
+      "$coin": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "priceTokenBinance": {
+      "$coin": {
+        ".read": true,
+        ".write": true
+      }
     }
   }
 }
 ```
+
+> Pour durcir la sécurité en production, restreindre les writes des nœuds de prix aux seuls services serveur (Cloud Functions) et conserver `users` en écriture propriétaire.
+
+### 💳 Paiements Premium (Stripe)
+- Checkout Stripe déclenché via une Cloud Function callable (Firebase Functions v2).
+- Achat réservé aux utilisateurs Google authentifiés (UID attaché à la session).
+- Pages dédiées : `StripePage` (achat), `StripeSuccessPage`, `StripeCancelPage`.
+- À court terme, l’activation premium est marquée côté client (RTDB); une implémentation par webhook Stripe serveur peut être ajoutée ensuite pour validation robuste.
 
 ---
 
