@@ -1,14 +1,17 @@
 /**
  * Épicerie fine 🛒 - Page fusionnée Hyperliquid + Binance
  * Affiche TOUS les tokens disponibles avec indication de la source
- * Support drag & drop vers "Ma cuisine"
+ * Support drag & drop vers "Ma cuisine" (desktop) et clic (mobile)
  */
 
 import TokenTile from '../elements/TokenTile'
 import { TOKENS } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
+import { useSelectedTokens } from '../context/SelectedTokensContext'
 
 export default function Page1() {
+  const { addToken } = useSelectedTokens()
+
   // Combiner Hyperliquid (10 tokens) + Binance (30 tokens)
   // Afficher les tokens Hyperliquid en premier, puis Binance
   // Si un token existe dans les deux sources, afficher les deux versions
@@ -67,6 +70,7 @@ export default function Page1() {
             symbol={token.symbol} 
             source={token.source} 
             draggable 
+            onAddToken={addToken}
           />
         ))}
       </div>

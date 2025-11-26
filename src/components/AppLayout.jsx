@@ -5,6 +5,10 @@ import Page1 from '../pages/page1'
 import Page2 from '../pages/page2'
 import LaMarmite from '../pages/LaMarmite'
 import ProfilePage from '../pages/ProfilePage'
+import StripePage from '../pages/StripePage.jsx';
+import StripeSuccessPage from '../pages/StripeSuccessPage.jsx';
+import StripeCancelPage from '../pages/StripeCancelPage.jsx';
+
 
 export default function AppLayout() {
   return (
@@ -22,6 +26,9 @@ export default function AppLayout() {
             <Route path="/MaCuisine" element={<Page2 />} />
             <Route path="/LaMarmite" element={<LaMarmite />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/Stripe" element={<StripePage />} />
+            <Route path="/stripe-success" element={<StripeSuccessPage />} />
+            <Route path="/stripe-cancel" element={<StripeCancelPage />} />
           </Routes>
         </main>
       </div>

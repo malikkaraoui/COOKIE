@@ -1,10 +1,12 @@
 // Composant générique TokenTile - affiche prix, variation et statut d'un token
 // Utilise le hook useToken (Hyperliquid) ou useBinanceToken (Binance)
-// Supporte drag & drop pour sélection
+// Supporte drag & drop (desktop) et clic (mobile)
+import { useState, useEffect } from 'react'
 import { useToken } from '../hooks/useToken'
 import { useBinanceToken } from '../hooks/useBinanceToken'
 import { useTokenIcon } from '../hooks/useTokenIcon'
 import { useDraggable } from '../hooks/useDraggable'
+import Toast from '../components/Toast'
 
 function narrowSpaces(str) { return str.replace(/\u00A0/g, "\u202F") }
 function fmtUSD(n, decimals = null) {
@@ -24,7 +26,19 @@ function fmtSignedAbs(n, d = 0) {
   return `${s}${a.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })}`
 }
 
-export default function TokenTile({ symbol, source = 'hyperliquid', draggable = false }) {
+export default function TokenTile({ symbol, source = 'hyperliquid', draggable = false, onAddToken }) {
+  const [isMobile, setIsMobile] = useState(false)
+  const [isAnimating, setIsAnimating] = useState(false)
+  const [toast, setToast] = useState(null)
+
+  // Détection mobile
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
   // Utiliser le bon hook selon la source
   const tokenHyper = useToken(symbol)
   const tokenBinance = useBinanceToken(symbol)
@@ -43,20 +57,46 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   else if (token.status === 'cached') statusLabel = 'Cache'
   else if (token.status === 'loading') statusLabel = 'Initialisation'
 
-  // Source lisible
+  // Source lisible (affiche correctement l'origine des données)
+  // hyperliquid → Hyperliquid, binance → Binance, sinon Navigateur (cache/local)
   let sourceLabel = 'Navigateur'
-  if (token.source === 'live') sourceLabel = 'Hyperliquid'
+  if (token.source === 'hyperliquid') sourceLabel = 'Hyperliquid'
   else if (token.source === 'binance') sourceLabel = 'Binance'
 
+  // Gestion clic mobile
+  const handleClick = (e) => {
+    if (isMobile && draggable && onAddToken) {
+      e.preventDefault()
+      const result = onAddToken(`${symbol}:${source}`)
+      if (result?.success) {
+        setIsAnimating(true)
+        setTimeout(() => setIsAnimating(false), 600)
+        setToast({ message: `${symbol} ajouté !`, type: 'success' })
+        console.log('✅', symbol, 'ajouté !')
+      } else if (result?.reason === 'already_exists') {
+        setToast({ message: `${symbol} déjà ajouté`, type: 'warning' })
+        console.warn('⚠️', symbol, 'déjà ajouté')
+      } else if (result?.reason === 'max_reached') {
+        setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+        console.warn('⚠️ Maximum 4 tokens')
+      }
+    }
+  }
+
   return (
+    <>
     <div 
       style={{ 
         ...styles.card, 
-        ...(draggable ? dragProps : {}),
-        cursor: draggable ? 'grab' : 'default'
+        ...(draggable && !isMobile ? dragProps : {}),
+        cursor: draggable ? (isMobile ? 'pointer' : 'grab') : 'default',
+        userSelect: 'none',
+        WebkitTapHighlightColor: 'transparent',
+        animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none'
       }}
-      {...(draggable ? dragHandlers : {})}
-      onDragStart={draggable ? (e) => dragHandlers.onDragStart(e, `${symbol}:${source}`) : undefined}
+      {...(draggable && !isMobile ? dragHandlers : {})}
+      onClick={isMobile && draggable ? handleClick : undefined}
+      onDragStart={draggable && !isMobile ? (e) => dragHandlers.onDragStart(e, `${symbol}:${source}`) : undefined}
     >
       <img 
         src={iconPath} 
@@ -84,6 +124,16 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
         </div>
       </div>
     </div>
+    
+    {/* Toast notification */}
+    {toast && (
+      <Toast 
+        message={toast.message} 
+        type={toast.type} 
+        onClose={() => setToast(null)} 
+      />
+    )}
+  </>
   )
 }
 

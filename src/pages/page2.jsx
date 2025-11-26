@@ -3,26 +3,122 @@
  * Ajustez vos allocations et visualisez les performances
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
+import TokenWeightRow from '../elements/TokenWeightRow'
 import PortfolioResults from '../elements/PortfolioResults'
 import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
-import { buildTokensData } from '../lib/portfolio/portfolioService'
 import { useMarketData } from '../context/MarketDataContext'
+import { getTokenConfig } from '../config/tokenList'
+
+// Composant interne pour bouton de suppression (adapté mobile)
+function DeleteButton({ symbol, onRemove, isMobile }) {
+  const size = isMobile ? 40 : 24
+  const fontSize = isMobile ? 24 : 14
+  const offset = isMobile ? -12 : -8
+
+  return (
+    <button
+      onClick={onRemove}
+      style={{
+        position: 'absolute',
+        top: offset,
+        right: offset,
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: '#ef4444',
+        color: 'white',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: fontSize,
+        fontWeight: 'bold',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        zIndex: 10
+      }}
+      title={`Retirer ${symbol}`}
+    >
+      ×
+    </button>
+  )
+}
 
 export default function Page2() {
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Détection mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
   const { selectedTokens, removeToken, count } = useSelectedTokens()
   const { user } = useAuth()
-  const { getToken } = useMarketData()
+  // Récupérer aussi 'tokens' pour re-mémoïser quand les prix/variations changent
+  const { getToken, tokens } = useMarketData()
   
   // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
-    return buildTokensData(selectedTokens, getToken)
-  }, [selectedTokens, getToken])
+    // Pour chaque token, on doit récupérer ses données selon sa source
+    const data = selectedTokens.map(symbolWithSource => {
+      const [symbol, source] = symbolWithSource.includes(':')
+        ? symbolWithSource.split(':')
+        : [symbolWithSource, 'hyperliquid']
+      
+      // Récupérer données de marché depuis MarketDataContext
+      // (qui contient maintenant Hyperliquid ET Binance)
+      // Utiliser directement l'état 'tokens' pour que le useMemo réagisse
+      const marketData = (tokens && tokens[symbol]) || getToken(symbol)
+      
+      // Récupérer config statique
+      const config = getTokenConfig(symbol)
+      
+      // S'assurer que deltaPct est bien numérique (Firebase peut renvoyer une string)
+      let rawDeltaPct = marketData && marketData.deltaPct != null ? marketData.deltaPct : 0
+      const numericDeltaPct = typeof rawDeltaPct === 'string' ? parseFloat(rawDeltaPct) : rawDeltaPct
+
+      // Filet de sécurité : recalcul si deltaPct demeure 0 mais price & prevDayPx présents
+      let finalDeltaPct = numericDeltaPct
+      if ((finalDeltaPct === 0 || isNaN(finalDeltaPct)) && marketData?.price != null && marketData?.prevDayPx != null && marketData.prevDayPx !== 0) {
+        finalDeltaPct = ((marketData.price / marketData.prevDayPx - 1) * 100)
+      }
+
+      const tokenData = {
+        symbol,
+        source,
+        deltaPct: finalDeltaPct || 0,
+        color: config?.color || '#666',
+        name: config?.name || symbol,
+        price: marketData?.price || null,
+        status: marketData?.status || 'loading'
+      }
+      
+      // Log pour debug
+      console.log(`🔍 Page2 tokensData ${symbol}:`, {
+        source,
+        rawDeltaPct,
+        numericDeltaPct,
+        finalDeltaPct: tokenData.deltaPct,
+        price: tokenData.price,
+        prevDayPx: marketData?.prevDayPx,
+        marketDataSource: marketData?.source
+      })
+      
+      return tokenData
+    })
+    
+    return data
+  }, [selectedTokens, getToken, tokens])
   
   // Simulateur de portfolio avec les tokens dynamiques
   const {
@@ -141,15 +237,15 @@ export default function Page2() {
           </button>
         </div>
 
-        {/* Sliders dynamiques */}
+        {/* Sliders dynamiques (branchés sur la bonne source par symbole) */}
         {tokensData.map(token => (
-          <TokenWeightSlider
+          <TokenWeightRow
             key={token.symbol}
             symbol={token.symbol}
+            source={token.source}
             weight={weights[token.symbol] || 0}
             onChange={(newWeight) => setWeight(token.symbol, newWeight)}
             color={token.color}
-            apy={token.deltaPct}
           />
         ))}
 
@@ -228,30 +324,11 @@ export default function Page2() {
               return (
                 <div key={symbolWithSource} style={{ position: 'relative' }}>
                   <TokenTile symbol={symbol} source={source} />
-                  <button
-                    onClick={() => removeToken(symbolWithSource)}
-                    style={{
-                      position: 'absolute',
-                      top: -8,
-                      right: -8,
-                      width: 24,
-                      height: 24,
-                      borderRadius: '50%',
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      cursor: 'pointer',
-                      fontSize: 14,
-                      fontWeight: 'bold',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
-                    }}
-                    title={`Retirer ${symbol}`}
-                  >
-                    ×
-                  </button>
+                  <DeleteButton 
+                    symbol={symbol}
+                    onRemove={() => removeToken(symbolWithSource)}
+                    isMobile={isMobile}
+                  />
                 </div>
               )
             })}

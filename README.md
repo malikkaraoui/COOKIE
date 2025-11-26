@@ -88,7 +88,7 @@ COOKIE/
 ├── docs/
 │   ├── CACHE_ARCHITECTURE.md      # Architecture du cache des prix
 │   ├── PRICE_CALCULATIONS.md      # Logique métier des calculs
-│   └── FIRESTORE_ARCHITECTURE.md  # Doc architecture BDD (legacy)
+│   └── REALTIME_DATABASE.md       # Architecture Firebase Realtime Database
 │
 ├── database.rules.json          # Règles de sécurité Realtime Database
 └── .env                         # Variables d'environnement
@@ -174,7 +174,7 @@ VITE_HYPERLIQUID_API_KEY=your_testnet_api_key
 VITE_HYPERLIQUID_API_SECRET=your_testnet_api_secret
 ```
 
-> ⚠️ **Important** : 
+│   └── REALTIME_DATABASE.md       # Architecture Firebase Realtime Database
 > - Tous les fichiers `.env.*` sont dans `.gitignore` pour protéger vos clés
 > - **Development** utilise testnet Hyperliquid (faux argent 🧪)
 > - **Production** utilise mainnet Hyperliquid (vrai argent ⚠️)
@@ -333,15 +333,9 @@ Voir `src/lib/infoClient.js` pour l'implémentation du client HTTP.
 ## 📚 Documentation
 
 ### 🌍 Environnements & Configuration
-- **[QUICKSTART.md](./QUICKSTART.md)** - Guide rapide de démarrage (5 min)
-- **[MIGRATION.md](./MIGRATION.md)** - Migration depuis l'ancien système .env
-- **[docs/ENVIRONMENTS.md](./docs/ENVIRONMENTS.md)** - Documentation technique complète
-- **[.github/SECRETS_SETUP.md](./.github/SECRETS_SETUP.md)** - Configuration GitHub Secrets pour CI/CD
 
 ### 🏗️ Architecture
-- **[docs/CACHE_ARCHITECTURE.md](./docs/CACHE_ARCHITECTURE.md)** - Système de cache des prix
-- **[docs/PRICE_CALCULATIONS.md](./docs/PRICE_CALCULATIONS.md)** - Logique métier des calculs
-- **[docs/FIRESTORE_ARCHITECTURE.md](./docs/FIRESTORE_ARCHITECTURE.md)** - Architecture BDD (legacy)
+<!-- Intégrations & APIs externes: NOWNodes non utilisé actuellement -->
 
 ### MCP Servers
 

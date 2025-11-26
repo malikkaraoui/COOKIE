@@ -143,5 +143,98 @@ body {
   background: #e4b85a;
   padding: 24px;
   overflow-y: auto; /* Scroll indépendant du contenu de la page */
+  overflow-x: hidden; /* Pas de scroll horizontal */
   height: 100%; /* Hauteur fixe */
+}
+
+/* ====================================
+   MOBILE RESPONSIVE
+   ==================================== */
+
+/* Animation fade in backdrop */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Animation slide up toast */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Animation pulse success */
+@keyframes pulseSuccess {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 8px 24px rgba(34, 197, 94, 0.5);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  }
+}
+
+/* Mobile: adapter la page principale */
+@media (max-width: 767px) {
+  .layout {
+    margin-left: 0 !important; /* Pas de marge sur mobile */
+    overflow-x: hidden; /* Empêcher scroll horizontal */
+  }
+  
+  .page {
+    padding: 16px; /* Padding réduit */
+    overflow-x: hidden; /* Scroll vertical uniquement */
+    max-width: 100vw; /* Empêcher débordement */
+  }
+  
+  /* Bouton hamburger au-dessus de tout */
+  .mobile-menu-toggle {
+    z-index: 10000 !important;
+  }
+  
+  /* Sidebar mobile: overlay au-dessus du contenu */
+  .sidebar.mobile {
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
+  }
+  
+  /* Cacher le resizer sur mobile */
+  .sidebar-resizer {
+    display: none;
+  }
+  
+  /* Bouton hamburger: ajuster position avec topbar réduite */
+  .mobile-menu-toggle {
+    top: 12px !important;
+  }
+  
+  /* Topbar mobile compacte */
+  .topbar {
+    padding: 0 16px !important;
+  }
+  
+  .topbar-content {
+    font-size: 14px;
+    justify-content: flex-end; /* Bouton login à droite */
+  }
+  
+  /* Empêcher tout débordement horizontal */
+  body, html, #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
 }
