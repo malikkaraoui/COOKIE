@@ -11,6 +11,8 @@ import { INFO_URL } from '../lib/hlEndpoints'
 import { calculatePriceChange } from '../lib/priceCalculations'
 import { setCachedPriceHyper } from '../lib/database/priceCache'
 import { getHyperliquidTokenSymbols } from '../config/tokenList'
+import { ref, onValue } from 'firebase/database'
+import { db } from '../config/firebase'
 
 const MarketDataContext = createContext(null)
 
@@ -91,7 +93,7 @@ export function MarketDataProvider({ children }) {
               updateToken(symbol, { 
                 price: markPx, 
                 prevDayPx,
-                source: 'live',
+                source: 'hyperliquid',
                 status: 'live'
               })
             } else {
@@ -120,6 +122,43 @@ export function MarketDataProvider({ children }) {
     }
   }, [])
 
+  // Listener temps réel pour les tokens Binance depuis Firebase
+  useEffect(() => {
+    const binanceRef = ref(db, 'priceTokenBinance')
+    
+    const unsubscribe = onValue(binanceRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const binanceData = snapshot.val()
+        
+        // Pour chaque token Binance dans Firebase
+        Object.keys(binanceData).forEach(symbol => {
+          const tokenData = binanceData[symbol]
+          
+          if (tokenData && tokenData.price != null) {
+            console.log(`📊 Firebase Binance ${symbol}:`, {
+              price: tokenData.price,
+              deltaPct: tokenData.deltaPct
+            })
+            
+            // Mettre à jour dans notre state local
+            updateToken(symbol, {
+              price: tokenData.price,
+              prevDayPx: tokenData.prevDayPx,
+              deltaAbs: tokenData.deltaAbs,
+              deltaPct: tokenData.deltaPct,
+              source: 'binance',
+              status: 'live'
+            })
+          }
+        })
+      }
+    }, (error) => {
+      console.error('❌ Erreur listener Binance Firebase:', error)
+    })
+
+    return () => unsubscribe()
+  }, [])
+
   // Fonction utilitaire de mise à jour atomique
   function updateToken(symbol, patch) {
     setTokens(prev => {
@@ -137,8 +176,9 @@ export function MarketDataProvider({ children }) {
       }
       merged.updatedAt = Date.now()
 
-      // Écriture Realtime DB (lecture publique via règles Firebase)
-      if (merged.source === 'live' && merged.price != null && merged.prevDayPx != null) {
+      // Écriture Realtime DB UNIQUEMENT pour Hyperliquid
+      // (Binance est déjà écrit par useBinancePrices)
+      if (merged.source === 'hyperliquid' && merged.price != null && merged.prevDayPx != null) {
         console.log(`🔥 Tentative écriture Firebase Hyperliquid ${symbol}:`, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,

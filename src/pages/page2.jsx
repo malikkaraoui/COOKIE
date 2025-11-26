@@ -11,8 +11,8 @@ import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
-import { buildTokensData } from '../lib/portfolio/portfolioService'
 import { useMarketData } from '../context/MarketDataContext'
+import { getTokenConfig } from '../config/tokenList'
 
 // Composant interne pour bouton de suppression (adapté mobile)
 function DeleteButton({ symbol, onRemove, isMobile }) {
@@ -67,7 +67,41 @@ export default function Page2() {
   
   // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
-    return buildTokensData(selectedTokens, getToken)
+    // Pour chaque token, on doit récupérer ses données selon sa source
+    const data = selectedTokens.map(symbolWithSource => {
+      const [symbol, source] = symbolWithSource.includes(':')
+        ? symbolWithSource.split(':')
+        : [symbolWithSource, 'hyperliquid']
+      
+      // Récupérer données de marché depuis MarketDataContext
+      // (qui contient maintenant Hyperliquid ET Binance)
+      const marketData = getToken(symbol)
+      
+      // Récupérer config statique
+      const config = getTokenConfig(symbol)
+      
+      const tokenData = {
+        symbol,
+        source,
+        deltaPct: marketData?.deltaPct || 0,
+        color: config?.color || '#666',
+        name: config?.name || symbol,
+        price: marketData?.price || null,
+        status: marketData?.status || 'loading'
+      }
+      
+      // Log pour debug
+      console.log(`🔍 Page2 tokensData ${symbol}:`, {
+        source,
+        deltaPct: tokenData.deltaPct,
+        price: tokenData.price,
+        marketDataSource: marketData?.source
+      })
+      
+      return tokenData
+    })
+    
+    return data
   }, [selectedTokens, getToken])
   
   // Simulateur de portfolio avec les tokens dynamiques
