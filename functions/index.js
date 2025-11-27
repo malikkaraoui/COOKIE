@@ -23,6 +23,12 @@ exports.createCheckoutSession = onCall(
     const uid = request.auth.uid;
     const email = request.auth.token && request.auth.token.email ? request.auth.token.email : undefined;
 
+    logger.info("📋 Création session Stripe", {
+      uid,
+      email,
+      hasAuth: !!request.auth,
+    });
+
     // Initialiser Stripe avec la clé sortie du secret
     const stripe = new Stripe(stripeSecret.value(), {
       apiVersion: "2024-06-20",
@@ -57,6 +63,8 @@ exports.createCheckoutSession = onCall(
       logger.info("✅ Session Stripe créée", {
         sessionId: session.id,
         url: session.url,
+        metadata: session.metadata,
+        client_reference_id: session.client_reference_id,
       });
 
       // On renvoie simplement l’URL au front
