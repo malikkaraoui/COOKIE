@@ -30,6 +30,13 @@ exports.createCheckoutSession = onCall(
     });
 
     try {
+      // Déterminer l'origine renvoyée par le client (pour éviter les soucis de port 5173/5174)
+      // Fallback sur 5173 en local si non fourni
+      const origin = request.data && request.data.origin ? String(request.data.origin) : "http://localhost:5173";
+
+      const successUrl = origin.replace(/\/$/, "") + "/stripe-success";
+      const cancelUrl = origin.replace(/\/$/, "") + "/stripe-cancel";
+
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [
@@ -43,8 +50,8 @@ exports.createCheckoutSession = onCall(
         client_reference_id: uid,
         customer_email: email,
         metadata: { uid },
-        success_url: "http://localhost:5173/stripe-success",
-        cancel_url: "http://localhost:5173/stripe-cancel",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       });
 
       logger.info("✅ Session Stripe créée", {

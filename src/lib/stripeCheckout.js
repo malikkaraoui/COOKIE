@@ -6,7 +6,9 @@ const createCheckoutSession = httpsCallable(functions, "createCheckoutSession");
 
 export async function startStripeCheckout() {
   try {
-    const result = await createCheckoutSession({});
+    // Transmettre l'origine courante pour que le serveur construise les URLs de redirection
+    const origin = window.location.origin;
+    const result = await createCheckoutSession({ origin });
     const data = result.data;
 
     if (!data || !data.url) {
