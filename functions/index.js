@@ -74,3 +74,6 @@ exports.createCheckoutSession = onCall(
     }
   }
 );
+
+// Brancher le webhook Stripe (gestion événements serveur à serveur)
+exports.handleStripeWebhook = require("./stripeWebhooks").handleStripeWebhook;
