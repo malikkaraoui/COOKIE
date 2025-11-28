@@ -23,6 +23,12 @@ exports.createCheckoutSession = onCall(
     const uid = request.auth.uid;
     const email = request.auth.token && request.auth.token.email ? request.auth.token.email : undefined;
 
+    logger.info("📋 Création session Stripe", {
+      uid,
+      email,
+      hasAuth: !!request.auth,
+    });
+
     // Initialiser Stripe avec la clé sortie du secret
     const stripe = new Stripe(stripeSecret.value(), {
       apiVersion: "2024-06-20",
@@ -30,6 +36,13 @@ exports.createCheckoutSession = onCall(
     });
 
     try {
+      // Déterminer l'origine renvoyée par le client (pour éviter les soucis de port 5173/5174)
+      // Fallback sur 5173 en local si non fourni
+      const origin = request.data && request.data.origin ? String(request.data.origin) : "http://localhost:5173";
+
+      const successUrl = origin.replace(/\/$/, "") + "/stripe-success";
+      const cancelUrl = origin.replace(/\/$/, "") + "/stripe-cancel";
+
       const session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [
@@ -43,13 +56,15 @@ exports.createCheckoutSession = onCall(
         client_reference_id: uid,
         customer_email: email,
         metadata: { uid },
-        success_url: "http://localhost:5173/stripe-success",
-        cancel_url: "http://localhost:5173/stripe-cancel",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
       });
 
       logger.info("✅ Session Stripe créée", {
         sessionId: session.id,
         url: session.url,
+        metadata: session.metadata,
+        client_reference_id: session.client_reference_id,
       });
 
       // On renvoie simplement l’URL au front

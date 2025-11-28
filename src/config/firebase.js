@@ -2,7 +2,7 @@
 // ⚠️ Ces clés sont PUBLIQUES (exposées côté client de toute façon)
 // La sécurité vient des règles Firebase Realtime Database
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider } from 'firebase/auth'
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
 import { getFunctions } from 'firebase/functions' 
 
@@ -22,6 +22,9 @@ const app = initializeApp(firebaseConfig)
 
 // Services Firebase exportés pour utilisation dans toute l'app
 export const auth = getAuth(app)
+// Forcer la persistance locale pour éviter les pertes de session lors des redirections (Stripe)
+setPersistence(auth, browserLocalPersistence).catch(() => {/* ignore */})
+
 export const db = getDatabase(app) // Realtime Database (plus simple que Firestore)
 export const googleProvider = new GoogleAuthProvider()
 

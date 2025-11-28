@@ -188,6 +188,47 @@ GET /api/v3/ticker/24hr?symbol=BNBUSDT
 - ✅ Token balances (via smart contracts)
 - ❌ **JAMAIS** pour prix de marché
 
+### 💳 Stripe Checkout & Webhooks
+
+**Références rapides** : `docs/instructions/stripe-checkout.md`, `.github/instructionStripeWebhooks.md`, `.github/deployStripeWebhookFunction.md`, `.github/README-stripe-firebase-links.md`.
+
+#### Callable `createCheckoutSession`
+- Fonction **Firebase Functions v2** `onCall` (CommonJS) définie dans `functions/index.js`.
+- Toujours instancier Stripe avec `const stripe = new Stripe(stripeSecret.value(), { apiVersion: "2024-06-20" })`.
+- Secrets via `defineSecret("STRIPE_SECRET_KEY")` (jamais `functions.config()` ni clé en clair dans le front).
+- Réponse attendue : `{ url: session.url }` et redirection gérée côté front via `httpsCallable(functions, "createCheckoutSession")` (`src/lib/stripeCheckout.js`).
+- Côté front, ne jamais remplacer l’appel callable par `fetch` vers l’URL publique de la fonction.
+
+#### Webhook `handleStripeWebhook`
+- Fonction **`onRequest`** v2 dédiée, branchée depuis `functions/index.js` vers `functions/stripeWebhooks.js`.
+- Secrets obligatoires : `STRIPE_SECRET_KEY` **et** `STRIPE_WEBHOOK_SECRET` (déclarés via `defineSecret`).
+- Vérification cryptographique **impérative** :
+  ```js
+  const event = stripe.webhooks.constructEvent(
+    req.rawBody,
+    req.headers['stripe-signature'],
+    stripeWebhookSecret.value()
+  )
+  ```
+  > Ne jamais parser le body avant cette étape, ne pas supprimer la vérification de signature.
+- Refuser toute méthode ≠ POST (HTTP 405) et tout header `Stripe-Signature` manquant (HTTP 400).
+- Journaliser uniquement `event.type`, `event.id`, `session.id`, `uid` (pas de secrets dans les logs).
+
+#### Contrat Realtime Database
+- Chaque session Stripe doit contenir `metadata.uid` pour rattacher le paiement à un utilisateur Firebase.
+- Succès (`checkout.session.completed`, `checkout.session.async_payment_succeeded`) → mettre à jour `users/{uid}/membership` avec `{ active: true, status: "active", tier: "premium", since: ServerValue.TIMESTAMP }` et créer/mettre à jour `users/{uid}/products/COOKIE_PREMIUM`.
+- Échec / expiré (`checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.payment_failed`) → `membership.active = false`, `membership.status = "failed"`, conserver `lastErrorEvent`.
+- Ne jamais modifier `createCheckoutSession` pour gérer ces statuts : toute source de vérité passe par le webhook.
+
+#### Déploiement & tests
+- Secrets :
+  ```bash
+  firebase functions:secrets:set STRIPE_SECRET_KEY
+  firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+  ```
+- Déploiement ciblé : `firebase deploy --only functions:createCheckoutSession,functions:handleStripeWebhook`.
+- Tests : Stripe CLI (`stripe listen --forward-to .../handleStripeWebhook`, `stripe trigger checkout.session.completed`).
+
 ---
 
 ## 🔐 Environnements Multi-Branches

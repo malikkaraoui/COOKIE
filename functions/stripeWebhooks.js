@@ -1,166 +1,189 @@
-// functions/stripeWebhooks.js
-
+// Imports nécessaires pour Firebase Functions et Stripe
 const { onRequest } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { defineSecret } = require("firebase-functions/params");
 const Stripe = require("stripe");
 const admin = require("firebase-admin");
 
-// Secrets Stripe
+// Initialise Firebase Admin si pas déjà fait
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+// Récupère les secrets depuis Firebase Secret Manager
+// Ces secrets sont sécurisés et ne sont jamais visibles dans le code
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 
+/**
+ * Fonction Cloud pour recevoir et vérifier les webhooks Stripe
+ * Appelée automatiquement par Stripe après chaque événement de paiement
+ */
 exports.handleStripeWebhook = onRequest(
   {
-    secrets: [stripeSecret, stripeWebhookSecret],
-    region: "us-central1",
+    region: "us-central1", // Région du serveur
+    secrets: [stripeSecret, stripeWebhookSecret], // Secrets requis
+    maxInstances: 1, // Une seule instance pour éviter les doublons
   },
   async (req, res) => {
-    logger.info("🌐 Requête webhook reçue", {
-      method: req.method,
-      headers: Object.keys(req.headers),
-      hasSignature: !!req.headers["stripe-signature"],
+    // ÉTAPE 1 : Log des informations de la requête reçue
+    logger.info("➡️ Webhook Stripe reçu", {
+      method: req.method, // Devrait être POST
+      contentType: req.headers["content-type"], // application/json
+      hasRawBody: !!req.rawBody, // Vérifie si rawBody existe
+      rawIsBuffer: Buffer.isBuffer(req.rawBody), // Vérifie si c'est bien un Buffer
+      rawLength: req.rawBody ? req.rawBody.length : 0, // Taille en bytes
     });
 
-    // Stripe n'envoie que des POST
+    // ÉTAPE 2 : Vérifie que c'est bien une requête POST
     if (req.method !== "POST") {
-      logger.warn("⚠️ Méthode non autorisée", { method: req.method });
-      res.status(405).send("Method Not Allowed");
-      return;
+      return res.status(405).send("Method Not Allowed");
     }
 
-    const sig = req.headers["stripe-signature"];
-
-    if (!sig) {
-      logger.error("❌ Signature Stripe manquante dans les headers");
-      res.status(400).send("No signature");
-      return;
+    // ÉTAPE 3 : Récupère la signature Stripe dans les headers
+    // Cette signature permet de vérifier que la requête vient bien de Stripe
+    const signature = req.headers["stripe-signature"];
+    if (!signature) {
+      logger.warn("⚠️ Stripe-Signature header manquant");
+      return res.status(400).send("Missing Stripe-Signature header");
     }
 
+    // ÉTAPE 4 : Récupère le secret webhook depuis Firebase
+    const webhookSecret = stripeWebhookSecret.value();
+
+    // 🧪 DEBUG : Affiche les premiers et derniers caractères du secret
+    // pour vérifier qu'on utilise le bon secret (whsec_KZPh84h2...)
+    logger.info("🧪 DEBUG webhook secret", {
+      prefix: webhookSecret.slice(0, 8), // whsec_KZ
+      suffix: webhookSecret.slice(-4), // ...v7vV
+      length: webhookSecret.length, // Devrait être ~40 caractères
+    });
+
+    // ÉTAPE 5 : Vérification cryptographique de la signature
     let event;
     try {
+      // Initialise le client Stripe avec la clé API
       const stripe = new Stripe(stripeSecret.value(), {
         apiVersion: "2024-06-20",
       });
 
-      logger.info("🔐 Vérification signature Stripe...", {
-        signaturePresent: !!sig,
-        secretPresent: !!stripeWebhookSecret.value(),
-      });
-
-      // ⚠️ Important : utiliser req.rawBody pour la vérification de signature
+      // CRITIQUE : Vérifie que la requête vient bien de Stripe
+      // Si la signature ne correspond pas, lance une erreur
       event = stripe.webhooks.constructEvent(
-        req.rawBody,
-        sig,
-        stripeWebhookSecret.value(),
+        req.rawBody,      // Le corps de la requête en Buffer brut (important!)
+        signature,        // La signature Stripe
+        webhookSecret     // Notre secret webhook (whsec_...)
       );
 
-      logger.info("✅ Signature valide, event construit", { type: event.type });
-    } catch (err) {
-      logger.error("❌ Webhook Stripe: signature invalide", {
-        message: err.message,
-        stack: err.stack,
+      // Si on arrive ici, la signature est valide ✅
+      logger.info("✅ Webhook Stripe vérifié", {
+        type: event.type, // Type d'événement (checkout.session.completed, etc.)
+        id: event.id,     // ID unique de l'événement
       });
-      res.status(400).send(`Webhook Error: ${err.message}`);
-      return;
+    } catch (err) {
+      // Si la signature est invalide, on rejette la requête
+      logger.error("❌ Vérification de signature échouée", {
+        error: err.message,
+      });
+      return res.status(400).send(`Webhook Error: ${err.message}`);
     }
 
-    logger.info("📩 Webhook Stripe reçu et validé", { type: event.type });
-
+    // ÉTAPE 6 : Traitement des événements métier
     try {
-      switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object;
-          
-          logger.info("💳 checkout.session.completed reçu", {
-            sessionId: session.id,
-            customer: session.customer,
-            email: (session.customer_details && session.customer_details.email) || null,
-            metadata: session.metadata,
-            amount: session.amount_total,
-            currency: session.currency,
-          });
+      // Connexion à la Realtime Database
+      const db = admin.database();
 
-          // Récupérer l'UID depuis les metadata (attaché lors de createCheckoutSession)
-          const uid = session.metadata && session.metadata.uid;
-          
+      // Switch selon le type d'événement Stripe
+      switch (event.type) {
+        // CAS 1 : Paiement réussi via Checkout
+        case "checkout.session.completed": {
+          const session = event.data.object; // Données de la session Stripe
+          const uid = session.metadata && session.metadata.uid; // ID utilisateur
+
+          // Si pas d'UID, on ne peut pas identifier l'utilisateur
           if (!uid) {
-            logger.warn("⚠️ UID manquant dans session.metadata", {
+            logger.warn("⚠️ UID manquant dans metadata", {
               sessionId: session.id,
-              metadata: session.metadata,
             });
             break;
           }
 
-          logger.info("🔑 UID extrait des metadata", { uid });
+          logger.info("💳 Paiement SUCCESS", { uid, sessionId: session.id });
 
-          // Marquer l'utilisateur comme premium dans Realtime Database
-          const db = admin.database();
-          const userRef = db.ref(`users/${uid}`);
-          
-          logger.info("📝 Mise à jour RTDB: membership...", { uid });
-
-          await userRef.update({
+          // Met à jour le membership de l'utilisateur dans RTDB
+          await db.ref(`users/${uid}`).update({
             membership: {
-              active: true,
-              tier: "premium",
-              step: 1,
-              since: admin.database.ServerValue.TIMESTAMP,
-              stripeCustomerId: session.customer || null,
-              stripeSessionId: session.id,
+              active: true,        // Activation du membership
+              status: "active",    // Statut actif
+              tier: "premium",     // Tier premium
+              step: 1,             // Étape 1 du parcours
+              since: admin.database.ServerValue.TIMESTAMP, // Timestamp serveur
+              stripeCustomerId: session.customer || null,  // ID client Stripe
+              stripeSessionId: session.id,                 // ID session
             },
             updatedAt: admin.database.ServerValue.TIMESTAMP,
           });
 
-          logger.info("✅ Membership mis à jour", { uid });
-
-          // Attacher le produit COOKIE_PREMIUM
-          const productRef = db.ref(`users/${uid}/products/COOKIE_PREMIUM`);
-          
-          logger.info("📝 Mise à jour RTDB: produit COOKIE_PREMIUM...", { uid });
-
-          await productRef.set({
-            acquired: true,
+          // Ajoute le produit COOKIE_PREMIUM à l'utilisateur
+          await db.ref(`users/${uid}/products/COOKIE_PREMIUM`).set({
+            acquired: true,      // Produit acquis
             acquiredAt: admin.database.ServerValue.TIMESTAMP,
-            price: session.amount_total / 100, // Stripe envoie en centimes
-            currency: session.currency,
+            price: session.amount_total / 100, // Montant en euros (Stripe envoie en centimes)
+            currency: session.currency,        // Devise (eur)
             stripeSessionId: session.id,
           });
 
-          logger.info("✅✅ Utilisateur marqué premium avec succès (webhook)", {
-            uid,
-            customer: session.customer,
-            sessionId: session.id,
-          });
-
           break;
         }
 
+        // CAS 2 : PaymentIntent réussi (optionnel, pour info)
+        case "payment_intent.succeeded": {
+          const intent = event.data.object;
+          const uid = intent.metadata && intent.metadata.uid;
+          
+          if (uid) {
+            logger.info("✅ Payment Intent succeeded", { uid });
+          }
+          break;
+        }
+
+        // CAS 3 : Paiement échoué
         case "payment_intent.payment_failed": {
-          const pi = event.data.object;
-          logger.warn("⚠️ payment_intent.payment_failed", {
-            id: pi.id,
-            reason: (pi.last_payment_error && pi.last_payment_error.message) || null,
-            metadata: pi.metadata,
+          const intent = event.data.object;
+          const uid = intent.metadata && intent.metadata.uid;
+
+          if (!uid) {
+            logger.warn("⚠️ UID manquant dans payment_intent.payment_failed");
+            break;
+          }
+
+          logger.info("💥 Paiement FAILED", { uid, type: event.type });
+
+          // Désactive le membership en cas d'échec
+          await db.ref(`users/${uid}`).update({
+            membership: {
+              active: false,       // Membership non actif
+              status: "failed",    // Statut failed
+              lastErrorEvent: event.type,
+              lastErrorAt: admin.database.ServerValue.TIMESTAMP,
+            },
+            updatedAt: admin.database.ServerValue.TIMESTAMP,
           });
 
-          // TODO: loguer dans RTDB ou notifier si souhaité
           break;
         }
 
+        // Par défaut : événements non gérés
         default:
-          logger.info("ℹ️ Event Stripe non géré explicitement", {
-            type: event.type,
-          });
+          logger.info("ℹ️ Event Stripe non géré", { type: event.type });
       }
 
-      res.json({ received: true });
+      // Répond à Stripe que le webhook a été reçu
+      return res.json({ received: true });
     } catch (err) {
-      logger.error("❌ Erreur interne lors du traitement du webhook", {
-        message: err.message,
-        stack: err.stack,
-      });
-      res.status(500).send("Internal error");
+      // Erreur lors de l'écriture dans RTDB
+      logger.error("❌ Erreur métier RTDB", { error: err.message });
+      return res.status(500).send("Internal Error");
     }
-  },
+  }
 );

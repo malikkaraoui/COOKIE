@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createElement } from 'react'
 import { useResizablePanel } from '../hooks/useResizablePanel'
 import { useNavigation } from '../context/NavigationContext'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
@@ -187,7 +187,7 @@ export default function Sidebar() {
         <div className="sidebar-inner">
           {/* Zone scrollable des liens */}
           <div className="scrollable-links">
-            {links.map(({ to, label, dropZone, icon: Icon }) => {
+            {links.map(({ to, label, dropZone, icon: IconComponent }) => {
               const active = location.pathname === to
               const isCompact = width < 160 // Mode compact si largeur < 160px
 
@@ -218,7 +218,7 @@ export default function Sidebar() {
                     }}
                   >
                     {/* Icône Lucide */}
-                    <Icon size={20} strokeWidth={2} />
+                    {createElement(IconComponent, { size: 20, strokeWidth: 2 })}
                     
                     {/* Texte (masqué en mode compact) */}
                     {!isCompact && (

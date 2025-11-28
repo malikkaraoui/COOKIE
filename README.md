@@ -353,6 +353,8 @@ Voir `src/lib/infoClient.js` pour l'implémentation du client HTTP.
 ## 📚 Documentation
 
 ### 🌍 Environnements & Configuration
+- [Index complet de la doc](docs/INDEX.md)
+- [Hub des instructions opérationnelles](docs/instructions/README.md)
 
 ### 🏗️ Architecture
 <!-- Intégrations & APIs externes: NOWNodes non utilisé actuellement -->
