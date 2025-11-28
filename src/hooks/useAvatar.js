@@ -6,6 +6,8 @@ import { useAuth } from './useAuth'
 export function useAvatar() {
   const { user } = useAuth()
   const { profile } = useUserProfile()
+  const membership = profile?.membership
+  const isPremium = Boolean(membership?.active && membership?.tier === 'premium')
 
   // Générer un avatar SVG avec l'initiale du prénom
   const generateFallbackAvatar = (size = 40) => {
@@ -29,6 +31,7 @@ export function useAvatar() {
     avatarURL,
     generateFallbackAvatar,
     handleImageError,
-    firstName: profile?.firstName || user?.displayName?.split(' ')[0] || 'Utilisateur'
+    firstName: profile?.firstName || user?.displayName?.split(' ')[0] || 'Utilisateur',
+    isPremium,
   }
 }

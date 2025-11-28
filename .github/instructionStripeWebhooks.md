@@ -110,254 +110,320 @@ Tu ne le mets **jamais** dans le front. On va le stocker comme secret dans Fireb
 Dans le terminal à la racine du projet COOKIE :
 
 ```bash
-firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
-# Coller ici la valeur whsec_... fournie par Stripe pour CE webhook.
 ```
+# instructionStripeWebhooks.md – Guide unique Stripe + Firebase
 
-Tu peux vérifier :
-
-```bash
-firebase functions:secrets:access STRIPE_WEBHOOK_SECRET
-```
+Document de référence pour tout ce qui concerne **Stripe Checkout**, **Firebase Functions v2** et **Realtime Database** dans COOKIE. Il fusionne les anciennes notes :
+- `README-stripe-firebase-links.md`
+- `instructionStripeWebhooks.md`
+- `deployStripeWebhookFunction.md`
 
 ---
 
-### 4.3. Nouvelle fonction Firebase pour le webhook (dans un fichier séparé)
+## Sommaire
+1. [Contexte & flux actuel](#1-contexte--flux-actuel)
+2. [Architecture cible](#2-architecture-cible)
+3. [Pré-requis techniques](#3-pré-requis-techniques)
+4. [Implémentation Firebase Functions](#4-implémentation-firebase-functions)
+5. [Contrat Firebase Realtime Database](#5-contrat-firebase-realtime-database)
+6. [Déploiement & tests](#6-déploiement--tests)
+7. [Guidelines Copilot (à répéter)](#7-guidelines-copilot-à-répéter)
+8. [Ressources officielles & articles](#8-ressources-officielles--articles)
+9. [FAQ & dépannage](#9-faq--dépannage)
 
-Objectif : **ne pas toucher** à `createCheckoutSession` plus que nécessaire.
+---
 
-#### 4.3.1. Créer `functions/stripeWebhooks.js`
+## 1. Contexte & flux actuel
 
+Flux POC :
+1. Le front appelle la fonction callable **`createCheckoutSession`**.
+2. La fonction crée une session Stripe (9 € test) et renvoie `session.url`.
+3. L’utilisateur est redirigé vers Stripe, puis revient sur `/stripe-success` ou `/stripe-cancel`.
+
+Limite : la vérité du paiement dépend de l’URL visitée → fragile si l’utilisateur ferme l’onglet. Les webhooks deviennent donc la **source de vérité serveur**.
+
+---
+
+## 2. Architecture cible
+
+- **Front** : continue d’afficher `/Stripe`, `/stripe-success`, `/stripe-cancel` pour l’UX.
+- **Backend** : ajoute une fonction HTTP v2 `handleStripeWebhook` (source unique des statuts premium).
+- **Stripe** : notifie automatiquement Firebase via webhooks sécurisés (signature HMAC + `req.rawBody`).
+
+👉 L’UX reste inchangée, mais l’état premium est déterminé côté serveur.
+
+Événements suivis (v1) :
+- `checkout.session.completed`
+- `checkout.session.async_payment_succeeded`
+- `checkout.session.async_payment_failed`
+- `checkout.session.expired`
+- `payment_intent.payment_failed` (optionnel)
+
+---
+
+## 3. Pré-requis techniques
+
+### Dépendances (`functions/package.json`)
+```jsonc
+{
+  "dependencies": {
+    "firebase-admin": "^latest",
+    "firebase-functions": "^latest",
+    "stripe": "^latest"
+  },
+  "engines": { "node": "24" }
+}
+```
+
+### Initialisation Firebase Admin
 ```js
-// functions/stripeWebhooks.js
+const admin = require("firebase-admin");
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+```
 
-const { onRequest } = require("firebase-functions/v2/https");
+### Imports Functions v2
+```js
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { defineSecret } = require("firebase-functions/params");
-const Stripe = require("stripe");
+```
 
-// Secrets Stripe
+### Secrets obligatoires (CLI)
+```bash
+firebase functions:secrets:set STRIPE_SECRET_KEY
+firebase functions:secrets:set STRIPE_WEBHOOK_SECRET
+firebase functions:secrets:access STRIPE_SECRET_KEY
+```
+
+### Métadonnées Stripe
+Chaque session Stripe **doit contenir** `metadata.uid` (uid Firebase). Sans ça, impossible de rattacher le paiement dans RTDB.
+
+---
+
+## 4. Implémentation Firebase Functions
+
+### 4.1 Callable `createCheckoutSession`
+- Fichier : `functions/index.js`.
+- Pattern : `onCall({ secrets: [stripeSecret] }, async (request) => { ... })`.
+- Toujours renvoyer `{ url: session.url }` et laisser le front rediriger.
+- Ne jamais mettre la clé `sk_...` côté front. Elle doit provenir de `defineSecret("STRIPE_SECRET_KEY")`.
+
+### 4.2 Webhook `handleStripeWebhook`
+- Fichier recommandé : `functions/stripeWebhooks.js` exporté depuis `functions/index.js`.
+- Signature obligatoire :
+```js
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 
-exports.handleStripeWebhook = onRequest(
-  { secrets: [stripeSecret, stripeWebhookSecret] },
-  async (req, res) => {
-    // Stripe n’envoie que des POST
-    if (req.method !== "POST") {
-      res.status(405).send("Method Not Allowed");
-      return;
-    }
+exports.handleStripeWebhook = onRequest({
+  region: "us-central1",
+  secrets: [stripeSecret, stripeWebhookSecret],
+  maxInstances: 1,
+}, async (req, res) => {
+  if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
-    const sig = req.headers["stripe-signature"];
+  const signature = req.headers["stripe-signature"];
+  if (!signature) return res.status(400).send("Missing Stripe-Signature header");
 
-    let event;
-    try {
-      const stripe = new Stripe(stripeSecret.value(), {
-        apiVersion: "2024-06-20",
-      });
+  let event;
+  try {
+    const stripe = new Stripe(stripeSecret.value(), { apiVersion: "2024-06-20" });
+    event = stripe.webhooks.constructEvent(
+      req.rawBody,
+      signature,
+      stripeWebhookSecret.value()
+    );
+    logger.info("✅ Webhook Stripe vérifié", { type: event.type, id: event.id });
+  } catch (err) {
+    logger.error("❌ Vérification de signature échouée", { error: err.message });
+    return res.status(400).send(`Webhook Error: ${err.message}`);
+  }
 
-      // ⚠️ Important : utiliser req.rawBody pour la vérification de signature
-      event = stripe.webhooks.constructEvent(
-        req.rawBody,
-        sig,
-        stripeWebhookSecret.value()
-      );
-    } catch (err) {
-      logger.error("❌ Webhook Stripe: signature invalide", {
-        message: err.message,
-      });
-      res.status(400).send(`Webhook Error: ${err.message}`);
-      return;
-    }
+  try {
+    const db = admin.database();
 
-    logger.info("📩 Webhook Stripe reçu", { type: event.type });
-
-    try {
-      switch (event.type) {
-        case "checkout.session.completed": {
-          const session = event.data.object;
-          // TODO: récupérer les infos utiles (client, email, metadata, etc.)
-          logger.info("✅ checkout.session.completed", {
-            sessionId: session.id,
-            customer: session.customer,
-            email: session.customer_details?.email || null,
-          });
-
-          // 👉 Ici, logique métier COOKIE :
-          // - marquer l'utilisateur "premium" dans Firebase
-          // - écrire un log dans la DB
-          // - envoyer un email, etc.
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object;
+        const uid = session.metadata?.uid;
+        if (!uid) {
+          logger.warn("UID manquant sur session complétée", { sessionId: session.id });
           break;
         }
 
-        case "payment_intent.payment_failed": {
-          const pi = event.data.object;
-          logger.warn("⚠️ payment_intent.payment_failed", {
-            id: pi.id,
-            reason: pi.last_payment_error?.message,
-          });
-
-          // TODO: loguer / notifier si tu le souhaites
-          break;
-        }
-
-        default:
-          logger.info("ℹ️ Event Stripe non géré explicitement", {
-            type: event.type,
-          });
+        await markMembershipSuccess(db, uid, session);
+        break;
       }
 
-      res.json({ received: true });
-    } catch (err) {
-      logger.error("❌ Erreur interne lors du traitement du webhook", {
-        message: err.message,
-        stack: err.stack,
-      });
-      res.status(500).send("Internal error");
+      case "checkout.session.async_payment_failed":
+      case "checkout.session.expired":
+      case "payment_intent.payment_failed": {
+        const obj = event.data.object;
+        const uid = obj.metadata?.uid;
+        if (!uid) {
+          logger.warn("UID manquant sur failure", { type: event.type });
+          break;
+        }
+
+        await markMembershipFailed(db, uid, event.type);
+        break;
+      }
+
+      default:
+        logger.info("Event Stripe ignoré", { type: event.type });
     }
+
+    return res.json({ received: true });
+  } catch (err) {
+    logger.error("❌ Erreur traitement webhook", { error: err.message });
+    return res.status(500).send("Internal Error");
   }
-);
+});
 ```
 
-> Copilot :
-> - Toujours utiliser `stripe.webhooks.constructEvent(req.rawBody, sig, stripeWebhookSecret.value())`.
-> - Ne pas parser le body soi-même (`JSON.parse`) avant cette étape.
-> - Ne pas mélanger “callable” (`onCall`) et “webhook HTTP” (`onRequest`) : ce sont deux fonctions différentes.
+Helper suggéré :
+```js
+async function markMembershipSuccess(db, uid, session) {
+  await db.ref(`users/${uid}`).update({
+    membership: {
+      active: true,
+      status: "active",
+      tier: "premium",
+      step: 1,
+      since: admin.database.ServerValue.TIMESTAMP,
+      stripeCustomerId: session.customer || null,
+      stripeSessionId: session.id,
+    },
+    updatedAt: admin.database.ServerValue.TIMESTAMP,
+  });
+
+  await db.ref(`users/${uid}/products/COOKIE_PREMIUM`).set({
+    acquired: true,
+    acquiredAt: admin.database.ServerValue.TIMESTAMP,
+    price: session.amount_total / 100,
+    currency: session.currency,
+    stripeSessionId: session.id,
+  });
+}
+
+async function markMembershipFailed(db, uid, eventType) {
+  await db.ref(`users/${uid}`).update({
+    membership: {
+      active: false,
+      status: "failed",
+      lastErrorEvent: eventType,
+      lastErrorAt: admin.database.ServerValue.TIMESTAMP,
+    },
+    updatedAt: admin.database.ServerValue.TIMESTAMP,
+  });
+}
+```
+
+⚠️ Ne jamais :
+- convertir `req.rawBody` → string/JSON avant `constructEvent`.
+- logguer les secrets.
+- mélanger `onCall` et `onRequest` dans la même fonction.
 
 ---
 
-### 4.4. Brancher la fonction dans `functions/index.js` sans casser `createCheckoutSession`
+## 5. Contrat Firebase Realtime Database
 
-Actuellement, `functions/index.js` contient déjà **`createCheckoutSession`** et utilise CommonJS.
+- `users/{uid}/membership`
+  - `active`: `true|false`
+  - `status`: `"active" | "failed"`
+  - `tier`: `"premium"`
+  - `since`: `ServerValue.TIMESTAMP`
+  - `stripeCustomerId`, `stripeSessionId`
+  - `lastErrorEvent`, `lastErrorAt` (si échec)
 
-Deux façons pour organiser :
+- `users/{uid}/products/COOKIE_PREMIUM`
+  - `acquired`: booléen
+  - `acquiredAt`: timestamp
+  - `price`: nombre (en euros)
+  - `currency`: ex `eur`
+  - `stripeSessionId`
 
-#### Option simple (pour l’instant) : tout dans `index.js`
-
-On peut **copier/coller** la fonction `handleStripeWebhook` directement dans `index.js`, sous `createCheckoutSession` :
-
-```js
-exports.createCheckoutSession = onCall(
-  { secrets: [stripeSecret] },
-  async (request) => {
-    // ... code actuel
-  }
-);
-
-// 👇 Ajouter handleStripeWebhook ici si tu ne veux pas de fichier séparé
-exports.handleStripeWebhook = onRequest(
-  { secrets: [stripeSecret, stripeWebhookSecret] },
-  async (req, res) => {
-    // ... code du webhook (voir stripeWebhooks.js)
-  }
-);
-```
-
-#### Option mieux structurée (recommandée quand tu seras à l’aise)
-
-1. Garder `createCheckoutSession` dans `index.js`.
-2. Mettre `handleStripeWebhook` dans `stripeWebhooks.js`.
-3. Dans `index.js`, faire :
-
-```js
-// functions/index.js
-
-// ... imports + createCheckoutSession ...
-
-// Ajouter cette ligne en bas :
-exports.handleStripeWebhook = require("./stripeWebhooks").handleStripeWebhook;
-```
-
-👉 Ça permet de **ne pas toucher** au code de `createCheckoutSession` et de juste brancher la nouvelle fonction.
+👉 Le webhook est le seul endroit où ces nœuds doivent être modifiés en fonction du paiement.
 
 ---
 
-### 4.5. Déployer uniquement la fonction webhook
+## 6. Déploiement & tests
 
-Quand `handleStripeWebhook` est en place :
+### Setup webhook dans Stripe Dashboard
+1. Developers → Webhooks → “Add endpoint”.
+2. URL : `https://us-central1-cookie1-b3592.cloudfunctions.net/handleStripeWebhook` (adapter projet).
+3. Événements : `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `payment_intent.payment_failed`.
+4. Copier le secret `whsec_...` → `firebase functions:secrets:set STRIPE_WEBHOOK_SECRET`.
 
-```bash
-firebase deploy --only functions:handleStripeWebhook
-```
-
-Tu peux aussi déployer les deux (si tu as changé `index.js`) :
-
+### Déploiement ciblé
 ```bash
 firebase deploy --only functions:createCheckoutSession,functions:handleStripeWebhook
 ```
 
----
-
-## 5. Tester le webhook Stripe
-
-### 5.1. Avec un vrai test de paiement (comme tu l’as déjà fait)
-
-1. Lancer le front (`npm run dev`).
-2. Aller sur `/Stripe`, lancer un paiement test.
-3. Payer avec une carte de test (`4242 4242 4242 4242`).
-4. Vérifier dans les logs :
-
+### Tests automatisables
 ```bash
-firebase functions:log --only handleStripeWebhook
+stripe login
+stripe listen --forward-to https://us-central1-cookie1-b3592.cloudfunctions.net/handleStripeWebhook
+stripe trigger checkout.session.completed
 ```
 
-Tu dois voir :
-
-- `📩 Webhook Stripe reçu`
-- puis `✅ checkout.session.completed`
-
-### 5.2. Avec le Stripe Dashboard
-
-Dans **Developers → Webhooks** :
-
-- Choisir ton endpoint → “Send test event”.
-- Sélectionner `checkout.session.completed`.
-- Envoyer l’événement.
-- Regarder les logs Firebase.
+### Tests manuels
+1. `npm run dev` → `/Stripe` → paiement test `4242 4242 4242 4242`.
+2. Vérifier `firebase functions:log --only handleStripeWebhook`.
+3. Contrôler RTDB (`users/{uid}`) pour voir `membership` mis à jour.
 
 ---
 
-## 6. À dire clairement à Copilot (guidelines)
-
-Pour toutes futures fonctions Stripe / Firebase :
-
-1. **Ne pas toucher** au code de `createCheckoutSession` sans raison explicite.
-2. Pour la configuration Stripe (clé secrète / webhook secret) :
-   - Utiliser `firebase functions:secrets:set ...`
-   - Dans le code, utiliser **uniquement** `defineSecret("NOM_DU_SECRET")`
-3. **Backend Firebase Functions = CommonJS + v2** :
-   - `const X = require('...')`
-   - `const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https")`
-   - `exports.maFonction = onCall(...)` ou `exports.monWebhook = onRequest(...)`
-4. **Front = ES Modules + callable** :
-   - `import { httpsCallable } from "firebase/functions"`
-   - `const fn = httpsCallable(functions, "nomDeLaFonction");`
-5. Ne pas réintroduire `functions.config()` (API supprimée en v7, déjà cause de bugs).
-6. Laisser `lint` dans `functions/package.json` comme :
-
-   ```json
-   "lint": "echo \"Skip lint\""
-   ```
-
-   tant que l’ESLint n’est pas configuré proprement pour Node/CommonJS.
+## 7. Guidelines Copilot (à répéter)
+1. Ne touche pas à `createCheckoutSession` sans consigne explicite.
+2. Utilise **toujours** `defineSecret` pour `STRIPE_SECRET_KEY` et `STRIPE_WEBHOOK_SECRET`.
+3. Backend = CommonJS + Functions v2 (`onCall`, `onRequest`).
+4. Front = `httpsCallable` (pas de `fetch` direct sur les Cloud Functions publiées).
+5. Pas de `functions.config()` ; cette API est supprimée en v7.
+6. Laisse le script `lint` des Functions sur `echo "Skip lint"` tant que la config Node n’est pas prête.
 
 ---
 
-## 7. Résumé
+## 8. Ressources officielles & articles
 
-- **Aujourd’hui :**
-  - `createCheckoutSession` gère la création de la session Stripe Checkout.
-  - Le front affiche `/stripe-success` ou `/stripe-cancel`.
+### Firebase
+- HTTP Functions 1st/2nd gen : https://firebase.google.com/docs/functions/http-events
+- Config & secrets v2 : https://firebase.google.com/docs/functions/config-env
+- Config 1st gen (historique) : https://firebase.google.com/docs/functions/1st-gen/config-env-1st
+- Tutoriel `defineSecret` + Stripe : https://codewithandrea.com/articles/api-keys-2ndgen-cloud-functions-firebase/
 
-- **Avec les webhooks :**
-  - `handleStripeWebhook` reçoit une notification **serveur à serveur** de Stripe.
-  - C’est le **point central** pour mettre à jour la base de données (statut premium, abonnements, etc.).
-  - Le front reste simple et concentré sur l’UX.
+### Stripe
+- Webhooks overview (EN) : https://docs.stripe.com/webhooks
+- Webhooks overview (FR) : https://docs.stripe.com/webhooks?locale=fr-FR
+- Signature HMAC (FR) : https://docs.stripe.com/webhooks/signature?locale=fr-FR
+- Quickstart webhook : https://docs.stripe.com/webhooks/quickstart
 
-Ce fichier sert de **référence** pour toi et pour Copilot.  
-Avant d’ajouter une nouvelle fonction Stripe :
+### Blogs & retours d’expérience
+- Raw body Firebase v2 : https://www.bitesite.ca/blog/raw-body-for-stripe-webhooks-using-firebase-cloud-functions
+- Exemple complet Stripe + Firebase : https://medium.com/@GaryHarrower/working-with-stripe-webhooks-firebase-cloud-functions-5366c206c6c
+- Déboguer les erreurs de signature : https://varbintech.com/blog/stripe-angular-firebase-how-to-fix-webhook-signature-errors
+- Discussion `req.rawBody` v2 : https://www.reddit.com/r/Firebase/comments/1g1gl40/firebase_functions_v2_doesnt_provide_raw_body/
 
-- vérifier si elle doit être un **callable** (`onCall`) ou un **webhook HTTP** (`onRequest`),
-- respecter les patterns ci-dessus,
-- ne pas casser `createCheckoutSession` 🙃
+---
+
+## 9. FAQ & dépannage
+
+**Q : `req.rawBody` vaut `undefined` ?**  
+A : Vérifie que la fonction est bien une Functions v2 pure (`onRequest`), sans Express ni middleware JSON. En dernier recours, créer une fonction 1st gen dédiée, mais la solution attendue reste `req.rawBody` natif v2.
+
+**Q : La signature Stripe échoue ?**  
+A : S’assurer que `req.rawBody` n’est pas altéré, que le header `Stripe-Signature` est transmis, et que le secret `whsec_...` correspond bien à l’endpoint en question. Voir la ressource Varbintech ci-dessus.
+
+**Q : Comment rattacher l’utilisateur ?**  
+A : Toujours mettre `metadata.uid` lors de la création de la session. Sans UID, le webhook loggue un warning et n’active pas le premium.
+
+**Q : Peut-on gérer plusieurs produits ?**  
+A : Oui, ajouter d’autres nœuds `users/{uid}/products/{SKU}` dans `markMembershipSuccess` selon le `price` ou la `metadata` de la session.
+
+---
+
+Fin du document unique Stripe × Firebase.
+```

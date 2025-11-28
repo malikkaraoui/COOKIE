@@ -45,7 +45,7 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   const token = source === 'binance' ? tokenBinance : tokenHyper
   
   const { iconPath, handleError } = useTokenIcon(symbol)
-  const { isDragging, dragHandlers, dragProps } = useDraggable(draggable)
+  const { dragHandlers, dragProps } = useDraggable(draggable)
   
   const hasDelta = token.deltaAbs != null && token.deltaPct != null
   const color = !hasDelta ? '#94a3b8' : token.deltaAbs >= 0 ? '#22c55e' : '#ef4444'

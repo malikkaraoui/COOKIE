@@ -20,8 +20,8 @@ export default function LogoutButton() {
       await signOut()
       // Redirection vers Marmiton Communautaire après déconnexion
       navigate('/MarmitonCommunautaire')
-    } catch (error) {
-      // L'erreur est déjà loggée dans le hook
+    } catch (err) {
+      console.error('Erreur de déconnexion:', err)
     }
   }
 

@@ -7,7 +7,7 @@ import './auth.css'
 
 export default function LoginButton() {
   const { user, loading, signInWithGoogle } = useAuth()
-  const { avatarURL, handleImageError, firstName } = useAvatar()
+  const { avatarURL, handleImageError, firstName, isPremium } = useAvatar()
   const { hoverHandlers, buttonStyle } = useButtonHover({
     baseColor: '#ffffff',
     hoverColor: '#e5e7eb',
@@ -18,8 +18,8 @@ export default function LoginButton() {
   const handleLogin = async () => {
     try {
       await signInWithGoogle()
-    } catch (error) {
-      // L'erreur est déjà loggée dans le hook
+    } catch (err) {
+      console.error('Erreur de connexion Google:', err)
     }
   }
 
@@ -31,12 +31,23 @@ export default function LoginButton() {
     return (
       <div className="user-profile">
         <span className="user-name">{firstName}</span>
-        <img 
-          src={avatarURL} 
-          alt={firstName} 
-          className="user-avatar"
-          onError={(e) => handleImageError(e, 40)}
-        />
+        <div className="user-avatar-wrapper">
+          <img 
+            src={avatarURL} 
+            alt={firstName} 
+            className="user-avatar"
+            onError={(e) => handleImageError(e, 40)}
+          />
+          {isPremium && (
+            <span 
+              className="premium-badge"
+              aria-label="Utilisateur premium"
+              title="COOKIE Premium actif"
+            >
+              ★
+            </span>
+          )}
+        </div>
       </div>
     )
   }

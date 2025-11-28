@@ -59,6 +59,7 @@ export default function ProfilePage() {
 
   const hasBirthDate = profile?.birthDate
   const age = hasBirthDate ? calculateAge(new Date(profile.birthDate)) : null
+  const isPremium = Boolean(profile?.membership?.active && profile?.membership?.tier === 'premium')
 
   return (
     <div className="profile-page">
@@ -66,12 +67,23 @@ export default function ProfilePage() {
 
         {/* Photo de profil + Nom/Prénom centrés */}
         <div className="profile-header">
-          <img 
-            src={avatarURL} 
-            alt={profile?.firstName || 'Profil'} 
-            className="profile-avatar-large"
-            onError={(e) => handleImageError(e, 120)}
-          />
+          <div className="profile-avatar-wrapper">
+            <img 
+              src={avatarURL} 
+              alt={profile?.firstName || 'Profil'} 
+              className="profile-avatar-large"
+              onError={(e) => handleImageError(e, 120)}
+            />
+            {isPremium && (
+              <span 
+                className="premium-badge premium-badge--lg"
+                aria-label="Utilisateur premium"
+                title="COOKIE Premium actif"
+              >
+                ★
+              </span>
+            )}
+          </div>
           <h2 className="profile-name">{profile?.firstName} {profile?.lastName}</h2>
           
           {/* Si date de naissance existe : afficher l'âge */}

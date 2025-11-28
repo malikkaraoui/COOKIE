@@ -28,7 +28,9 @@ export default function BtcOrderBook() {
           setBids(b);
           setAsks(a);
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Impossible de parser le flux l2Book', err)
+      }
     };
     return () => ws.close();
   }, []);
