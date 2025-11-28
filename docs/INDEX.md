@@ -25,6 +25,17 @@
 
 ---
 
+## 🧭 Instructions opérationnelles
+
+| Document | Description | Audience | Durée |
+|----------|-------------|----------|-------|
+| **[docs/instructions/README.md](./instructions/README.md)** | Hub centralisant toutes les consignes (Copilot, Stripe, Binance, etc.) | 🟡 Tous | 5 min |
+| **[docs/instructions/stripe-checkout.md](./instructions/stripe-checkout.md)** | Recette complète pour `createCheckoutSession` + pages front | 🔴 Dev Front/Backend | 15 min |
+| **[docs/instructions/binance.md](./instructions/binance.md)** | Statut des intégrations Binance / Hyperliquid / NOWNodes | 🟡 Dev Data | 3 min |
+| **[.github/instructionStripeWebhooks.md](../.github/instructionStripeWebhooks.md)** | Ajout `handleStripeWebhook`, événements Stripe | 🔴 Backend | 15 min |
+
+---
+
 ## 🏗️ Architecture Technique
 
 | Document | Description | Audience | Durée lecture |
