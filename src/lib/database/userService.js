@@ -1,6 +1,6 @@
 // Service Realtime Database pour la gestion des utilisateurs
 // Architecture simple avec Firebase Auth UID comme clé unique
-import { ref, get, set, update } from 'firebase/database'
+import { ref, get, set, update, onValue } from 'firebase/database'
 import { db } from '../../config/firebase'
 
 /**
@@ -273,4 +273,75 @@ export async function getPortfolioWeights(uid) {
   const snapshot = await get(weightsRef)
   
   return snapshot.exists() ? snapshot.val() : null
+}
+
+/**
+ * Récupère le capital initial du simulateur (« Ma Cuisine »)
+ * Valeur par défaut : 1000
+ *
+ * @param {string} uid
+ * @returns {Promise<number>} - Capital initial en dollars
+ */
+export async function getInitialCapital(uid) {
+  if (!uid) return 1000
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings/capitalInitial`)
+  const snapshot = await get(capitalRef)
+
+  if (snapshot.exists()) {
+    const value = snapshot.val()
+    const numericValue = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(numericValue) ? numericValue : 1000
+  }
+
+  return 1000
+}
+
+/**
+ * Sauvegarde le capital initial du simulateur
+ * Stocke également un timestamp pour debugging
+ *
+ * @param {string} uid
+ * @param {number} capital
+ */
+export async function saveInitialCapital(uid, capital) {
+  if (!uid) throw new Error('UID is required')
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings`)
+  const numericValue = Number(capital)
+
+  if (!Number.isFinite(numericValue)) {
+    throw new Error('capital must be a valid number')
+  }
+
+  await update(capitalRef, {
+    capitalInitial: numericValue,
+    capitalUpdatedAt: Date.now(),
+  })
+}
+
+/**
+ * Écoute en temps réel le capital initial depuis Firebase.
+ * Retourne une fonction pour se désabonner.
+ *
+ * @param {string} uid
+ * @param {(value: number|null) => void} callback
+ * @returns {() => void}
+ */
+export function subscribeInitialCapital(uid, callback) {
+  if (!uid) {
+    return () => {}
+  }
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings/capitalInitial`)
+  const unsubscribe = onValue(capitalRef, (snapshot) => {
+    if (!callback) return
+    if (snapshot.exists()) {
+      callback(snapshot.val())
+    } else {
+      callback(null)
+    }
+  })
+
+  return () => unsubscribe()
 }

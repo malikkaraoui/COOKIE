@@ -3,7 +3,7 @@
  * Ajustez vos allocations et visualisez les performances
  */
 
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
 import TokenWeightRow from '../elements/TokenWeightRow'
@@ -14,6 +14,11 @@ import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
 import { getTokenConfig } from '../config/tokenList'
+import { 
+  getInitialCapital, 
+  saveInitialCapital, 
+  subscribeInitialCapital 
+} from '../lib/database/userService'
 
 // Composant interne pour bouton de suppression (adapté mobile)
 function DeleteButton({ symbol, onRemove, isMobile }) {
@@ -66,6 +71,15 @@ export default function Page2() {
   const { user } = useAuth()
   // Récupérer aussi 'tokens' pour re-mémoïser quand les prix/variations changent
   const { getToken, tokens } = useMarketData()
+
+  const selectedSymbols = useMemo(() => {
+    return selectedTokens.map(symbolWithSource => {
+      const [symbol] = symbolWithSource.includes(':') 
+        ? symbolWithSource.split(':') 
+        : [symbolWithSource]
+      return symbol
+    })
+  }, [selectedTokens])
   
   // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
@@ -128,7 +142,87 @@ export default function Page2() {
     setWeight,
     resetWeights,
     results
-  } = usePortfolioSimulation(1000, tokensData)
+  } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
+
+  const capitalDebounceRef = useRef(null)
+  const isEditingCapitalRef = useRef(false)
+  const lastSyncedCapitalRef = useRef(null)
+
+  // Synchronise le capital initial avec Firebase quand l'utilisateur est connecté
+  useEffect(() => {
+    if (!user?.uid) {
+      lastSyncedCapitalRef.current = null
+      return
+    }
+
+    let isMounted = true
+    let unsubscribe = null
+
+    async function bootstrapCapital() {
+      try {
+        const remoteValue = await getInitialCapital(user.uid)
+        if (!isMounted) return
+        lastSyncedCapitalRef.current = remoteValue
+        setCapitalInitial(remoteValue)
+      } catch (error) {
+        console.error('Erreur chargement capital initial:', error)
+      }
+    }
+
+    bootstrapCapital()
+
+    unsubscribe = subscribeInitialCapital(user.uid, (value) => {
+      if (!isMounted || isEditingCapitalRef.current) return
+      if (value == null) return
+      const numericValue = typeof value === 'number' ? value : Number(value)
+      if (!Number.isFinite(numericValue)) return
+      if (lastSyncedCapitalRef.current === numericValue) return
+      lastSyncedCapitalRef.current = numericValue
+      setCapitalInitial(numericValue)
+    })
+
+    return () => {
+      isMounted = false
+      if (unsubscribe) unsubscribe()
+    }
+  }, [user?.uid, setCapitalInitial])
+
+  useEffect(() => {
+    return () => {
+      if (capitalDebounceRef.current) {
+        clearTimeout(capitalDebounceRef.current)
+      }
+    }
+  }, [])
+
+  const persistCapital = async (value) => {
+    if (!user?.uid) return
+    try {
+      await saveInitialCapital(user.uid, value)
+      lastSyncedCapitalRef.current = value
+    } catch (error) {
+      console.error('Erreur sauvegarde capital initial:', error)
+    }
+  }
+
+  const handleCapitalChange = (newValue) => {
+    setCapitalInitial(newValue)
+
+    if (!user?.uid) {
+      return
+    }
+
+    isEditingCapitalRef.current = true
+
+    if (capitalDebounceRef.current) {
+      clearTimeout(capitalDebounceRef.current)
+    }
+
+    capitalDebounceRef.current = setTimeout(() => {
+      isEditingCapitalRef.current = false
+      persistCapital(newValue)
+    }, 600)
+  }
 
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -175,7 +269,7 @@ export default function Page2() {
           max="10000"
           step="10"
           value={capitalInitial}
-          onChange={(e) => setCapitalInitial(parseFloat(e.target.value))}
+          onChange={(e) => handleCapitalChange(parseFloat(e.target.value))}
           style={{
             width: '100%',
             height: '10px',
