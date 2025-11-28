@@ -5,6 +5,7 @@ import { useNavigation } from '../context/NavigationContext'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
+import { isActivePath } from '../lib/pathUtils'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
 import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
@@ -75,7 +76,7 @@ export default function Sidebar() {
   const { addToken, count } = useSelectedTokens()
   const [isShaking, setIsShaking] = useState(false)
   
-  const { dropHandlers, dropProps } = useDropZone(
+  const { dropHandlers, isActive: isDropZoneActive } = useDropZone(
     (symbol) => {
       // Vérifier si l'utilisateur est connecté
       if (!user) {
@@ -188,29 +189,20 @@ export default function Sidebar() {
           {/* Zone scrollable des liens */}
           <div className="scrollable-links">
             {links.map(({ to, label, dropZone, icon: IconComponent }) => {
-              const active = location.pathname === to
+              const active = isActivePath(location.pathname, to)
               const isCompact = width < 160 // Mode compact si largeur < 160px
 
               return (
                 <div
                   key={to}
-                  style={{
-                    position: 'relative',
-                    padding: dropZone ? '8px' : '0',
-                    borderRadius: dropZone ? '8px' : '0',
-                    ...(dropZone ? dropProps : {})
-                  }}
+                  className={`nav-link-wrapper${dropZone ? ' nav-link-wrapper--dropzone' : ''}${dropZone && isDropZoneActive ? ' nav-link-wrapper--dropzone-active' : ''}`}
                   {...(dropZone ? dropHandlers : {})}
                 >
                   <Link
                     to={to}
-                    className={`nav-link ${active ? 'active' : ''}`}
+                    className={`nav-link ${active ? 'active' : ''} ${isCompact ? 'nav-link--compact' : ''}`}
                     style={{
-                      animation: isShaking && dropZone ? 'shake 0.5s infinite' : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      justifyContent: isCompact ? 'center' : 'flex-start'
+                      animation: isShaking && dropZone ? 'shake 0.5s infinite' : 'none'
                     }}
                     onClick={() => {
                       setActivePage(to)
@@ -218,30 +210,20 @@ export default function Sidebar() {
                     }}
                   >
                     {/* Icône Lucide */}
-                    {createElement(IconComponent, { size: 20, strokeWidth: 2 })}
+                    <span className="nav-link-icon">
+                      {createElement(IconComponent, { size: 20, strokeWidth: 2 })}
+                    </span>
                     
                     {/* Texte (masqué en mode compact) */}
                     {!isCompact && (
-                      <span style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        flex: 1
-                      }}>
+                      <span className="nav-link-label">
                         {label}
                       </span>
                     )}
                     
                     {/* Badge count */}
                     {dropZone && count > 0 && !isCompact && (
-                      <span style={{
-                        padding: '2px 8px',
-                        background: '#22c55e',
-                        color: 'white',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 'bold'
-                      }}>
+                      <span className="nav-link-extra">
                         {count}/{4}
                       </span>
                     )}
