@@ -186,24 +186,3 @@
   background: #f8d7da;
   border-radius: 8px;
 }
-
-/* Bouton Profil dans la sidebar */
-.profile-button {
-  width: 100%;
-  text-decoration: none;
-  color: inherit;
-}
-
-.profile-button span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-}
-
-.profile-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}

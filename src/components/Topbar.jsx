@@ -2,6 +2,19 @@ import { useResizablePanel } from '../hooks/useResizablePanel'
 import { useState, useEffect } from 'react'
 import LoginButton from '../auth/LoginButton'
 
+// Modifie ici les réglages par défaut de la topbar
+const TOPBAR_DESKTOP_CONFIG = {
+  min: 64,   // hauteur mini quand on redimensionne (desktop)
+  max: 150,   // hauteur maxi
+  initial: 80, // hauteur par défaut
+}
+
+const TOPBAR_MOBILE_CONFIG = {
+  min: 70,
+  max: 70,
+  initial: 70, // hauteur fixe affichée sur mobile
+}
+
 export default function Topbar() {
   const [isMobile, setIsMobile] = useState(false)
 
@@ -15,15 +28,14 @@ export default function Topbar() {
     return () => window.removeEventListener('resize', checkMobile)
   }, [])
 
-  const { size: height, isResizing, startResizing, handleDoubleClick } = useResizablePanel({
-    min: 60,
-    max: 250,
-    initial: 150,
-    axis: 'y', // on redimensionne sur l'axe vertical
+  const { size: desktopHeight, isResizing, startResizing, handleDoubleClick } = useResizablePanel({
+    axis: 'y',
+    config: TOPBAR_DESKTOP_CONFIG,
   })
 
-  // Hauteur fixe sur mobile, variable sur desktop
-  const topbarHeight = isMobile ? 60 : height
+  const topbarHeight = isMobile
+    ? TOPBAR_MOBILE_CONFIG.initial
+    : desktopHeight
 
   return (
     <>

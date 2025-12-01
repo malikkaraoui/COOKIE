@@ -6,9 +6,14 @@ import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
 import { isActivePath } from '../lib/pathUtils'
+import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
+import LoginSidebarButton from '../auth/LoginSidebarButton'
 import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
+
+// Styles Sidebar COMPACT, ce réglage permet le redimensionnement
+const SIDEBAR_COMPACT_WIDTH = 170
 
 export default function Sidebar() {
   // État mobile menu
@@ -32,9 +37,9 @@ export default function Sidebar() {
 
   // gestion du redimensionnement horizontal (desktop seulement)
   const { size: width, isResizing, startResizing, handleDoubleClick } = useResizablePanel({
-    min: 110,
-    max: 420,
-    initial: 200,
+    min: 100,
+    max: 235,
+    initial: 210,
     axis: 'x', // on redimensionne sur l'axe horizontal
   })
 
@@ -70,7 +75,34 @@ export default function Sidebar() {
   const { setActivePage } = useNavigation()
 
   // Auth
-  const { user } = useAuth()
+  const { user, signInWithGoogle } = useAuth()
+  const [isAuthModalOpen, setAuthModalOpen] = useState(false)
+  const [authModalLoading, setAuthModalLoading] = useState(false)
+  const [authModalError, setAuthModalError] = useState('')
+
+  const openAuthModal = () => {
+    setAuthModalError('')
+    setAuthModalOpen(true)
+  }
+
+  const closeAuthModal = () => {
+    if (authModalLoading) return
+    setAuthModalOpen(false)
+    setAuthModalError('')
+  }
+
+  const handleAuthModalLogin = async () => {
+    try {
+      setAuthModalLoading(true)
+      setAuthModalError('')
+      await signInWithGoogle()
+      setAuthModalOpen(false)
+    } catch (err) {
+      setAuthModalError(err?.message || 'Impossible de vous connecter pour le moment.')
+    } finally {
+      setAuthModalLoading(false)
+    }
+  }
 
   // Gestion tokens sélectionnés et drop zone
   const { addToken, count } = useSelectedTokens()
@@ -116,6 +148,10 @@ export default function Sidebar() {
       icon: CreditCard
     }] : []),
   ]
+
+  // Déterminer si on est en mode compact
+  const appliedWidth = isMobile ? 280 : width
+  const isCompact = appliedWidth <= SIDEBAR_COMPACT_WIDTH
 
   return (
     <>
@@ -174,7 +210,7 @@ export default function Sidebar() {
       )}
 
       <nav 
-        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''}`}
+        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''} ${isCompact ? 'sidebar--compact' : ''}`}
         style={{ 
           width: isMobile ? '280px' : width, 
           height: sidebarHeight,
@@ -190,7 +226,7 @@ export default function Sidebar() {
           <div className="scrollable-links">
             {links.map(({ to, label, dropZone, icon: IconComponent }) => {
               const active = isActivePath(location.pathname, to)
-              const isCompact = width < 160 // Mode compact si largeur < 160px
+              const hoverLabelProps = getHoverLabelProps(label)
 
               return (
                 <div
@@ -204,6 +240,7 @@ export default function Sidebar() {
                     style={{
                       animation: isShaking && dropZone ? 'shake 0.5s infinite' : 'none'
                     }}
+                    {...hoverLabelProps}
                     onClick={() => {
                       setActivePage(to)
                       closeMobileMenu()
@@ -249,11 +286,76 @@ export default function Sidebar() {
           
           {/* Footer fixe en bas avec les boutons auth */}
           <div className="sidebar-footer">
-            <ProfileButton />
-            <LogoutButton />
+            {user ? (
+              <>
+                <ProfileButton isCompact={isCompact} />
+                <LogoutButton isCompact={isCompact} />
+              </>
+            ) : (
+              <LoginSidebarButton
+                isCompact={isCompact}
+                onClick={openAuthModal}
+              />
+            )}
           </div>
         </div>
       </nav>
+
+      {isAuthModalOpen && (
+        <div
+          className="auth-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-modal-title"
+          onClick={closeAuthModal}
+        >
+          <div
+            className="auth-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="auth-modal-close"
+              type="button"
+              aria-label="Fermer la fenêtre de connexion"
+              onClick={closeAuthModal}
+              disabled={authModalLoading}
+            >
+              ×
+            </button>
+
+            <div className="auth-modal-content">
+              <h3 id="auth-modal-title">Connecte-toi pour cuisiner</h3>
+              <p>
+                Retrouve ta cuisine personnalisée, synchronise tes ingrédients et débloque toutes les fonctionnalités premium.
+              </p>
+
+              {authModalError && (
+                <div className="auth-modal-error">
+                  {authModalError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                className="auth-modal-primary"
+                onClick={handleAuthModalLogin}
+                disabled={authModalLoading}
+              >
+                {authModalLoading ? 'Connexion en cours…' : 'Se connecter avec Google'}
+              </button>
+
+              <button
+                type="button"
+                className="auth-modal-secondary"
+                onClick={closeAuthModal}
+                disabled={authModalLoading}
+              >
+                Plus tard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Resizer (desktop uniquement) */}
       {!isMobile && (

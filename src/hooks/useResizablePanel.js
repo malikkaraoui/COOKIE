@@ -2,28 +2,60 @@
 // axis: 'x' → largeur (sidebar, utilise clientX)
 // axis: 'y' → hauteur (topbar, utilise clientY)
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value))
+
+// Réglages par défaut par axe
+const AXIS_DEFAULTS = {
+  x: { min: 140, max: 420, initial: 220 },
+  y: { min: 80, max: 220, initial: 140 }
+}
+
+/**
+ * Hook générique de redimensionnement avec configuration ultra-simple :
+ * pour chaque axe (x/y), tu peux définir min / max / default.
+ *
+ * Exemple :
+ * const sidebar = useResizablePanel({ axis: 'x', config: { min: 160, max: 360, initial: 240 } })
+ * const topbar  = useResizablePanel({ axis: 'y', config: { min: 90,  max: 260, initial: 150 } })
+ */
 export function useResizablePanel({
-  min = 80,
-  max = 200,
-  initial = 100,
-  axis = 'y', // 'x' = largeur, 'y' = hauteur
+  axis = 'y',
+  config,
+  // compatibilité : accepte toujours min/max/initial à la racine
+  min,
+  max,
+  initial,
 } = {}) {
-  const [size, setSize] = useState(initial)
+  const baseConfig = AXIS_DEFAULTS[axis] || AXIS_DEFAULTS.y
+
+  const resolvedConfig = useMemo(() => ({
+    ...baseConfig,
+    ...(config || {}),
+    ...(min !== undefined ? { min } : {}),
+    ...(max !== undefined ? { max } : {}),
+    ...(initial !== undefined ? { initial } : {}),
+  }), [baseConfig, config, min, max, initial])
+
+  const configRef = useRef(resolvedConfig)
+  const [size, setSize] = useState(() =>
+    clamp(resolvedConfig.initial, resolvedConfig.min, resolvedConfig.max)
+  )
   const [isResizing, setIsResizing] = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(false) // État collapsed
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  useEffect(() => {
+    configRef.current = resolvedConfig
+  }, [resolvedConfig])
 
   const handleMouseMove = useCallback((e) => {
     if (!isResizing) return
 
-    // Pour l'axe X (sidebar): clientX donne directement la largeur depuis la gauche
-    // Pour l'axe Y (topbar): clientY donne directement la hauteur depuis le haut
     const position = axis === 'x' ? e.clientX : e.clientY
-
-    const newSize = Math.min(max, Math.max(min, position))
-    setSize(newSize)
-  }, [isResizing, min, max, axis])
+    const { min: activeMin, max: activeMax } = configRef.current
+    setSize(clamp(position, activeMin, activeMax))
+  }, [isResizing, axis])
 
   const handleMouseUp = useCallback(() => {
     if (isResizing) {
@@ -48,23 +80,21 @@ export function useResizablePanel({
     setIsResizing(true)
   }, [])
 
-  // Double-clic pour toggle min/max
   const handleDoubleClick = useCallback(() => {
+    const { min: activeMin, max: activeMax } = configRef.current
     if (isCollapsed) {
-      // Si collapsed, étendre au max
-      setSize(max)
+      setSize(activeMax)
       setIsCollapsed(false)
     } else {
-      // Si étendu, réduire au min
-      setSize(min)
+      setSize(activeMin)
       setIsCollapsed(true)
     }
-  }, [isCollapsed, min, max])
+  }, [isCollapsed])
 
   return {
     size,
     isResizing,
     startResizing,
-    handleDoubleClick, // Nouvelle fonction exportée
+    handleDoubleClick,
   }
 }
