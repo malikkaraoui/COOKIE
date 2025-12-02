@@ -68,7 +68,7 @@ const TOKEN_SIZE_DECIMALS = {
   ETH: 4,
   SOL: 2,
   BNB: 3,
-  MATIC: 1,
+  POL: 1,
   kPEPE: 0,
   AVAX: 2,
   ATOM: 2,
@@ -91,6 +91,44 @@ const PRICE_DISPLAY_FRACTION_DIGITS = 8
 const SMALL_VALUE_MAX_DECIMALS = 8
 
 const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
+
+const DECIMAL_INPUT_REGEX = /^\d*(?:[,.]\d*)?$/u
+
+const normalizeDecimalInput = (value) => {
+  if (value == null) {
+    return ''
+  }
+  return String(value).replace(/\s+/g, '')
+}
+
+const isValidDecimalInput = (value) => {
+  if (value === '') {
+    return true
+  }
+  return DECIMAL_INPUT_REGEX.test(value)
+}
+
+const toCanonicalDecimalString = (value) => {
+  if (value == null) {
+    return ''
+  }
+  return String(value).replace(',', '.')
+}
+
+const toDisplayDecimalString = (value) => {
+  if (value == null || value === '') {
+    return ''
+  }
+  return String(value).replace('.', ',')
+}
+
+const parseDecimalValue = (value) => {
+  if (value == null || value === '') {
+    return NaN
+  }
+  const normalized = toCanonicalDecimalString(value)
+  return Number(normalized)
+}
 
 const getSizeDecimals = (symbol) => {
   if (!symbol) {
@@ -147,6 +185,32 @@ const getPriceDecimals = (symbol) => {
   return PRICE_DISPLAY_FRACTION_DIGITS
 }
 
+const getPriceStepValue = (symbol) => {
+  const constraint = getPriceConstraint(symbol)
+  if (constraint?.tick) {
+    return constraint.tick
+  }
+  const decimals = getPriceDecimals(symbol)
+  if (!Number.isFinite(decimals) || decimals < 0) {
+    return Number(PRICE_INPUT_STEP)
+  }
+  const step = 1 / (10 ** Math.min(decimals, PRICE_DISPLAY_FRACTION_DIGITS))
+  return step > 0 ? step : Number(PRICE_INPUT_STEP)
+}
+
+const clampDecimalsForValue = (numericValue, decimals) => {
+  if (!Number.isFinite(decimals)) {
+    return 0
+  }
+  if (!Number.isFinite(numericValue)) {
+    return Math.max(0, decimals)
+  }
+  if (Math.abs(numericValue) >= 1) {
+    return Math.max(0, Math.min(decimals, 2))
+  }
+  return Math.max(0, decimals)
+}
+
 const quantizePrice = (symbol, value) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -154,15 +218,18 @@ const quantizePrice = (symbol, value) => {
   }
   const constraint = getPriceConstraint(symbol)
   if (!constraint) {
-    return numeric.toFixed(PRICE_DISPLAY_FRACTION_DIGITS)
+    const decimals = clampDecimalsForValue(numeric, PRICE_DISPLAY_FRACTION_DIGITS)
+    return numeric.toFixed(decimals)
   }
   const { tick, decimals = PRICE_DISPLAY_FRACTION_DIGITS } = constraint
   if (!tick || tick <= 0) {
-    return numeric.toFixed(decimals)
+    const adjustedDecimals = clampDecimalsForValue(numeric, decimals)
+    return numeric.toFixed(adjustedDecimals)
   }
   const steps = Math.round(numeric / tick)
   const quantized = steps * tick
-  const decimalPlaces = decimals ?? Math.max(0, (tick.toString().split('.')[1] || '').length)
+  const defaultDecimals = decimals ?? Math.max(0, (tick.toString().split('.')[1] || '').length)
+  const decimalPlaces = clampDecimalsForValue(quantized, defaultDecimals)
   return quantized.toFixed(decimalPlaces)
 }
 
@@ -170,7 +237,7 @@ function createBlankOrder(symbol = '') {
   return {
     symbol,
     side: 'buy',
-    size: DEFAULT_ORDER_SIZE,
+    size: toDisplayDecimalString(DEFAULT_ORDER_SIZE),
     price: '',
     autoPrice: true,
     autoSize: true
@@ -336,6 +403,7 @@ export default function Page2() {
   const capitalDebounceRef = useRef(null)
   const isEditingCapitalRef = useRef(false)
   const lastSyncedCapitalRef = useRef(null)
+  const priceNudgeIntervalRef = useRef(null)
 
   // Synchronise le capital initial avec Firebase quand l'utilisateur est connecté
   useEffect(() => {
@@ -381,6 +449,27 @@ export default function Page2() {
       if (capitalDebounceRef.current) {
         clearTimeout(capitalDebounceRef.current)
       }
+      if (priceNudgeIntervalRef.current) {
+        clearInterval(priceNudgeIntervalRef.current)
+        priceNudgeIntervalRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const handlePointerRelease = () => {
+      if (priceNudgeIntervalRef.current) {
+        clearInterval(priceNudgeIntervalRef.current)
+        priceNudgeIntervalRef.current = null
+      }
+    }
+    window.addEventListener('mouseup', handlePointerRelease)
+    window.addEventListener('touchend', handlePointerRelease)
+    window.addEventListener('touchcancel', handlePointerRelease)
+    return () => {
+      window.removeEventListener('mouseup', handlePointerRelease)
+      window.removeEventListener('touchend', handlePointerRelease)
+      window.removeEventListener('touchcancel', handlePointerRelease)
     }
   }, [])
 
@@ -417,16 +506,18 @@ export default function Page2() {
             symbol: canonical,
             price: computeAutoLimitPrice(canonical) || '',
             autoPrice: true,
-            size: computeAutoSize(canonical),
+            size: toDisplayDecimalString(computeAutoSize(canonical)),
             autoSize: true
           }
         }
         if (field === 'size') {
-          const processed = quantizeSize(order.symbol, value, 'round') || value
-          const clamped = applyMinSizeUnits(order.symbol, processed)
+          const normalized = normalizeDecimalInput(value)
+          if (!isValidDecimalInput(normalized)) {
+            return order
+          }
           return {
             ...order,
-            size: clamped,
+            size: normalized,
             autoSize: false
           }
         }
@@ -458,7 +549,7 @@ export default function Page2() {
           ...createBlankOrder(fallbackSymbol),
           symbol: fallbackSymbol,
           price: computeAutoLimitPrice(fallbackSymbol) || '',
-          size: computeAutoSize(fallbackSymbol),
+          size: toDisplayDecimalString(computeAutoSize(fallbackSymbol)),
           autoPrice: true,
           autoSize: true
         }
@@ -484,7 +575,7 @@ export default function Page2() {
       ...createBlankOrder(symbol),
       symbol,
       price: computeAutoLimitPrice(symbol) || '',
-      size: computeAutoSize(symbol),
+      size: toDisplayDecimalString(computeAutoSize(symbol)),
       autoPrice: true,
       autoSize: true
     }))
@@ -494,6 +585,100 @@ export default function Page2() {
     }
     setOrderForms(defaults)
   }
+
+  const finalizeManualSize = useCallback((index) => {
+    setOrderForms((prev) =>
+      prev.map((order, currentIndex) => {
+        if (currentIndex !== index) {
+          return order
+        }
+        if (!order.symbol || order.autoSize) {
+          return order
+        }
+        const canonical = findCanonicalSymbol(order.symbol)
+        if (!canonical) {
+          return order
+        }
+        const processed = quantizeSize(canonical, toCanonicalDecimalString(order.size), 'round')
+        if (!processed) {
+          return { ...order, size: '' }
+        }
+        const clamped = applyMinSizeUnits(canonical, processed)
+        return { ...order, size: toDisplayDecimalString(clamped) }
+      })
+    )
+  }, [findCanonicalSymbol])
+
+  const stopContinuousNudge = useCallback(() => {
+    if (priceNudgeIntervalRef.current) {
+      clearInterval(priceNudgeIntervalRef.current)
+      priceNudgeIntervalRef.current = null
+    }
+  }, [])
+
+  const nudgeOrderPrice = useCallback((index, direction) => {
+    if (!direction || !Number.isFinite(direction)) {
+      return
+    }
+    setOrderForms((prev) =>
+      prev.map((order, currentIndex) => {
+        if (currentIndex !== index) {
+          return order
+        }
+        const canonical = findCanonicalSymbol(order.symbol)
+        if (!canonical) {
+          return order
+        }
+        const step = getPriceStepValue(canonical)
+        const currentValue = order.autoPrice
+          ? computeAutoLimitPrice(canonical)
+          : order.price
+        const numeric = Number(currentValue)
+        const base = Number.isFinite(numeric) && numeric > 0 ? numeric : step
+        const next = base + step * (direction > 0 ? 1 : -1)
+        const safeNext = next > 0 ? next : step
+        const quantized = quantizePrice(canonical, safeNext) || safeNext.toString()
+        return {
+          ...order,
+          symbol: canonical,
+          price: quantized,
+          autoPrice: false
+        }
+      })
+    )
+  }, [findCanonicalSymbol, computeAutoLimitPrice])
+
+  const startContinuousNudge = useCallback((index, direction) => {
+    if (!direction) return
+    nudgeOrderPrice(index, direction)
+    stopContinuousNudge()
+    priceNudgeIntervalRef.current = setInterval(() => {
+      nudgeOrderPrice(index, direction)
+    }, 200)
+  }, [nudgeOrderPrice, stopContinuousNudge])
+
+  const applyLivePrice = useCallback((index) => {
+    setOrderForms((prev) =>
+      prev.map((order, currentIndex) => {
+        if (currentIndex !== index) {
+          return order
+        }
+        const canonical = findCanonicalSymbol(order.symbol)
+        if (!canonical) {
+          return order
+        }
+        const livePrice = computeAutoLimitPrice(canonical)
+        if (!livePrice) {
+          return order
+        }
+        return {
+          ...order,
+          price: livePrice,
+          autoPrice: true
+        }
+      })
+    )
+  }, [findCanonicalSymbol, computeAutoLimitPrice])
 
   const handleCapitalChange = (newValue) => {
     setCapitalInitial(newValue)
@@ -529,7 +714,7 @@ export default function Page2() {
         const canonicalSymbol = findCanonicalSymbol(order.symbol)
         const computedSize = order.autoSize
           ? computeAutoSize(canonicalSymbol)
-          : quantizeSize(canonicalSymbol, order.size, 'round')
+          : quantizeSize(canonicalSymbol, toCanonicalDecimalString(order.size), 'round')
         const effectiveSize = applyMinSizeUnits(canonicalSymbol, computedSize)
         const effectivePrice = order.autoPrice
           ? computeAutoLimitPrice(canonicalSymbol)
@@ -623,14 +808,19 @@ export default function Page2() {
   const formatNumericString = (value, options = {}) => {
     const {
       maximumFractionDigits = 4,
-      preserveTinyValues = false
+      preserveTinyValues = false,
+      limitHighValues = false
     } = options
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return value ?? '—'
     const isTiny = preserveTinyValues && Math.abs(numeric) < 1
-    const digits = isTiny
+    const absValue = Math.abs(numeric)
+    let digits = isTiny
       ? Math.max(maximumFractionDigits, SMALL_VALUE_MAX_DECIMALS)
       : maximumFractionDigits
+    if (!isTiny && limitHighValues && absValue >= 1) {
+      digits = Math.min(digits, 2)
+    }
     return numeric.toLocaleString('fr-FR', {
       maximumFractionDigits: digits,
       minimumFractionDigits: isTiny ? Math.min(4, digits) : 0
@@ -740,8 +930,16 @@ export default function Page2() {
               : order.price
             const livePriceNumber = safeSymbol ? tokenPriceMap?.[safeSymbol] : null
             const livePriceDisplay = Number.isFinite(livePriceNumber)
-              ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true })} USDC`
+              ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true, limitHighValues: true })} USDC`
               : null
+            const sizeNumber = parseDecimalValue(order.size)
+            const priceNumber = displayedPrice === '' ? NaN : Number(displayedPrice)
+            const notionalUsd = Number.isFinite(sizeNumber) && Number.isFinite(priceNumber)
+              ? sizeNumber * priceNumber
+              : null
+            const notionalDisplay = notionalUsd != null
+              ? formatNumericString(notionalUsd, { maximumFractionDigits: 2, preserveTinyValues: true, limitHighValues: true })
+              : ''
 
             return (
               <div
@@ -829,11 +1027,12 @@ export default function Page2() {
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille</label>
                     <input
-                      type="number"
-                      min={PRICE_INPUT_MIN}
-                      step={PRICE_INPUT_STEP}
+                      type="text"
+                      inputMode="decimal"
+                      pattern="[0-9]*[.,]?[0-9]*"
                       value={order.size}
                       onChange={(e) => updateOrderField(index, 'size', e.target.value)}
+                      onBlur={() => finalizeManualSize(index)}
                       placeholder={DEFAULT_ORDER_SIZE}
                       style={{
                         width: '100%',
@@ -842,7 +1041,8 @@ export default function Page2() {
                         padding: '10px',
                         background: '#0f172a',
                         color: '#e5e7eb',
-                        border: '1px solid #1e293b'
+                        border: '1px solid #1e293b',
+                        fontVariantNumeric: 'tabular-nums'
                       }}
                     />
                     <small style={{ color: '#475569' }}>
@@ -853,13 +1053,132 @@ export default function Page2() {
                   </div>
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDC)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', marginTop: '4px' }}>
+                      <input
+                        type="number"
+                        min={PRICE_INPUT_MIN}
+                        step={PRICE_INPUT_STEP}
+                        value={displayedPrice}
+                        onChange={(e) => updateOrderField(index, 'price', e.target.value)}
+                        placeholder="87000"
+                        style={{
+                          width: '100%',
+                          borderRadius: '10px',
+                          padding: '10px',
+                          background: '#0f172a',
+                          color: '#e5e7eb',
+                          border: '1px solid #1e293b',
+                          fontVariantNumeric: 'tabular-nums'
+                        }}
+                      />
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            if (e.detail === 0) {
+                              nudgeOrderPrice(index, 1)
+                            }
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            startContinuousNudge(index, 1)
+                          }}
+                          onMouseUp={stopContinuousNudge}
+                          onMouseLeave={stopContinuousNudge}
+                          onTouchStart={(e) => {
+                            e.preventDefault()
+                            startContinuousNudge(index, 1)
+                          }}
+                          onTouchEnd={stopContinuousNudge}
+                          onTouchCancel={stopContinuousNudge}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #1e293b',
+                            background: '#1d293b',
+                            color: '#e5e7eb',
+                            fontWeight: 700,
+                            fontSize: '16px',
+                            cursor: safeSymbol ? 'pointer' : 'not-allowed',
+                            opacity: safeSymbol ? 1 : 0.5
+                          }}
+                          disabled={!safeSymbol}
+                          aria-label="Augmenter le prix"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            if (e.detail === 0) {
+                              nudgeOrderPrice(index, -1)
+                            }
+                          }}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            startContinuousNudge(index, -1)
+                          }}
+                          onMouseUp={stopContinuousNudge}
+                          onMouseLeave={stopContinuousNudge}
+                          onTouchStart={(e) => {
+                            e.preventDefault()
+                            startContinuousNudge(index, -1)
+                          }}
+                          onTouchEnd={stopContinuousNudge}
+                          onTouchCancel={stopContinuousNudge}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '8px',
+                            border: '1px solid #1e293b',
+                            background: '#1d293b',
+                            color: '#e5e7eb',
+                            fontWeight: 700,
+                            fontSize: '16px',
+                            cursor: safeSymbol ? 'pointer' : 'not-allowed',
+                            opacity: safeSymbol ? 1 : 0.5
+                          }}
+                          disabled={!safeSymbol}
+                          aria-label="Diminuer le prix"
+                        >
+                          −
+                        </button>
+                      </div>
+                    </div>
+                    <small style={{ color: '#475569' }}>
+                      {safeSymbol
+                        ? livePriceDisplay
+                          ? (
+                              <span>
+                                Prix marché :{' '}
+                                <button
+                                  type="button"
+                                  onClick={() => applyLivePrice(index)}
+                                  style={{
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#f87171',
+                                    padding: 0,
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    textDecoration: 'underline'
+                                  }}
+                                >
+                                  {livePriceDisplay}
+                                </button>
+                                {' '}• clic = revenir au marché (auto)
+                              </span>
+                            )
+                          : 'Prix Hyperliquid live (chargement…)'
+                        : 'Sélectionne un token pour voir le prix marché'}
+                    </small>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Valeur position (USDC)</label>
                     <input
-                      type="number"
-                      min={PRICE_INPUT_MIN}
-                      step={PRICE_INPUT_STEP}
-                      value={displayedPrice}
-                      onChange={(e) => updateOrderField(index, 'price', e.target.value)}
-                      placeholder="87000"
+                      type="text"
+                      value={notionalDisplay}
+                      readOnly
+                      placeholder="—"
                       style={{
                         width: '100%',
                         marginTop: '4px',
@@ -867,15 +1186,13 @@ export default function Page2() {
                         padding: '10px',
                         background: '#0f172a',
                         color: '#e5e7eb',
-                        border: '1px solid #1e293b'
+                        border: '1px solid #1e293b',
+                        opacity: notionalUsd != null ? 1 : 0.5,
+                        fontVariantNumeric: 'tabular-nums'
                       }}
                     />
                     <small style={{ color: '#475569' }}>
-                      {order.autoPrice && safeSymbol
-                        ? livePriceDisplay
-                          ? `Auto: prix Hyperliquid live (${livePriceDisplay})`
-                          : 'Auto: prix Hyperliquid live (chargement…)'
-                        : 'Définis ton propre prix'}
+                      Calcul: taille × prix limite
                     </small>
                   </div>
                 </div>
@@ -1019,7 +1336,7 @@ export default function Page2() {
                           </div>
                           <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
                             <div>
-                              Prix limite : <strong>{formatNumericString(order.limitPx, { maximumFractionDigits: 2, preserveTinyValues: true })} USDC</strong>
+                              Prix limite : <strong>{formatNumericString(order.limitPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true })} USDC</strong>
                             </div>
                             <div>
                               Taille restante : <strong>{formatNumericString(order.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> (initiale {formatNumericString(order.origSz, { maximumFractionDigits: 5, preserveTinyValues: true })})
@@ -1079,13 +1396,13 @@ export default function Page2() {
                               Taille : <strong>{formatNumericString(position.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> token(s)
                             </div>
                             <div>
-                              Prix d'entrée : <strong>{formatNumericString(position.entryPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                              Prix d'entrée : <strong>{formatNumericString(position.entryPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
                             </div>
                             <div>
-                              Mark actuel : <strong>{formatNumericString(position.markPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                              Mark actuel : <strong>{formatNumericString(position.markPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
                             </div>
                             <div>
-                              Liquidation : <strong>{formatNumericString(position.liqPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                              Liquidation : <strong>{formatNumericString(position.liqPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
                             </div>
                             <div>
                               Levier estimé : <strong>{position.leverage ? `${position.leverage}x` : '—'}</strong>

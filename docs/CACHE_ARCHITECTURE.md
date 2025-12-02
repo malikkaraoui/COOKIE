@@ -137,7 +137,7 @@ fetch('/info', { coins: ['ETH'] })  // Requête 2
 // ✅ 10 tokens = 1 seule requête toutes les 5s
 fetch('/info', { 
   type: 'assetCtxs', 
-  coins: ['BTC', 'ETH', 'SOL', 'BNB', 'MATIC', 'kPEPE', 'AVAX', 'ATOM', 'APT', 'ARB']
+  coins: ['BTC', 'ETH', 'SOL', 'BNB', 'POL', 'kPEPE', 'AVAX', 'ATOM', 'APT', 'ARB']
 })
 ```
 
@@ -265,7 +265,7 @@ node scripts/update-hyperliquid-tokens.js
 - **Chargement** : < 50ms (localStorage)
 - **Fallback** : localStorage → Firebase
 
-**Liste** : BTC, ETH, SOL, BNB, MATIC, kPEPE, AVAX, ATOM, APT, ARB
+**Liste** : BTC, ETH, SOL, BNB, POL, kPEPE, AVAX, ATOM, APT, ARB
   );
 }
 ```

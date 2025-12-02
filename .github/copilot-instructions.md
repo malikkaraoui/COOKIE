@@ -16,7 +16,7 @@
 
 | Source | Usage | Tokens |
 |--------|-------|--------|
-| **Hyperliquid API** | Prix crypto temps réel | BTC, ETH, SOL, BNB, MATIC, kPEPE, AVAX, ATOM, APT, ARB |
+| **Hyperliquid API** | Prix crypto temps réel | BTC, ETH, SOL, BNB, POL, kPEPE, AVAX, ATOM, APT, ARB |
 | **Binance Spot API** | Prix BNB + tokens BEP-20 | BNB, CAKE, DOGE, SHIB, etc. |
 | **Firebase RTDB** | Cache prix + auth users | Tous |
 
