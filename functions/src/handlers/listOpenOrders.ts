@@ -1,5 +1,8 @@
 import * as functions from "firebase-functions";
-import { infoClient, hyperliquidAccountAddress } from "../hyperliquidClient";
+import {
+  infoClient,
+  hyperliquidAccountAddress,
+} from "../hyperliquidClient";
 
 interface NormalizedOrder {
   oid: number;
@@ -10,6 +13,18 @@ interface NormalizedOrder {
   origSz: string;
   timestamp: number;
   reduceOnly: boolean;
+}
+
+interface NormalizedPosition {
+  coin: string;
+  side: "long" | "short";
+  size: string;
+  signedSize: string;
+  entryPx: string | null;
+  markPx: string | null;
+  liqPx: string | null;
+  leverage: string | null;
+  entryTime: number | null;
 }
 
 function normalizeOrders(rawOrders: Array<Record<string, unknown>>): NormalizedOrder[] {
@@ -28,6 +43,46 @@ function normalizeOrders(rawOrders: Array<Record<string, unknown>>): NormalizedO
   });
 }
 
+function normalizePositions(
+  rawPositions: Array<Record<string, unknown>>,
+  mids: Record<string, unknown>
+): NormalizedPosition[] {
+  return rawPositions
+    .map((entry) => {
+      if (entry?.type !== "oneWay") {
+        return null;
+      }
+      const position = entry.position as Record<string, unknown> | undefined;
+      if (!position || typeof position.coin !== "string") {
+        return null;
+      }
+
+      const signedSize = Number(position.szi);
+      if (!Number.isFinite(signedSize) || signedSize === 0) {
+        return null;
+      }
+
+      const entryPx = Number(position.entryPx);
+      const liqPx = Number(position.liqPx);
+      const leverage = Number(position.leverage);
+      const markPx = Number(mids?.[position.coin]);
+      const entryTime = Number(position.entryTime ?? position.timestamp);
+
+      return {
+        coin: position.coin,
+        side: signedSize > 0 ? "long" : "short",
+        size: Math.abs(signedSize).toString(),
+        signedSize: signedSize.toString(),
+        entryPx: Number.isFinite(entryPx) ? entryPx.toString() : null,
+        markPx: Number.isFinite(markPx) ? markPx.toString() : null,
+        liqPx: Number.isFinite(liqPx) ? liqPx.toString() : null,
+        leverage: Number.isFinite(leverage) ? leverage.toFixed(2) : null,
+        entryTime: Number.isFinite(entryTime) ? entryTime : null,
+      };
+    })
+    .filter(Boolean) as NormalizedPosition[];
+}
+
 export const listOpenOrders = functions.https.onRequest(async (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -44,16 +99,26 @@ export const listOpenOrders = functions.https.onRequest(async (req, res) => {
   }
 
   try {
-    const openOrders = await infoClient.openOrders({
-      user: hyperliquidAccountAddress,
-    });
+    const [openOrders, clearingState, mids] = await Promise.all([
+      infoClient.openOrders({ user: hyperliquidAccountAddress }),
+      infoClient.clearinghouseState({ user: hyperliquidAccountAddress }),
+      infoClient.allMids(),
+    ]);
 
-    const normalized = normalizeOrders(openOrders as Array<Record<string, unknown>>);
+    const normalizedOrders = normalizeOrders(openOrders as Array<Record<string, unknown>>);
+    const normalizedPositions = normalizePositions(
+      ((clearingState as Record<string, unknown>)?.assetPositions as Array<Record<string, unknown>>) || [],
+      (mids as Record<string, unknown>) || {}
+    );
 
     res.status(200).json({
       ok: true,
-      count: normalized.length,
-      openOrders: normalized,
+      counts: {
+        orders: normalizedOrders.length,
+        positions: normalizedPositions.length,
+      },
+      openOrders: normalizedOrders,
+      openPositions: normalizedPositions,
     });
   } catch (error: any) {
     console.error("listOpenOrders error", error);

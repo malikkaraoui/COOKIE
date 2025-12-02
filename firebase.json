@@ -13,6 +13,9 @@
       }
     ]
   },
+  "database": {
+    "rules": "database.rules.json"
+  },
   "emulators": {
     "dataconnect": {
       "dataDir": "dataconnect/.dataconnect/pgliteData"

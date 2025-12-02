@@ -3,7 +3,7 @@
  * Ajustez vos allocations et visualisez les performances
  */
 
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import TokenTile from '../elements/TokenTile'
 import TokenWeightSlider from '../elements/TokenWeightSlider'
 import TokenWeightRow from '../elements/TokenWeightRow'
@@ -13,12 +13,11 @@ import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
-import { getTokenConfig, getHyperliquidTokenSymbols } from '../config/tokenList'
+import { getTokenConfig } from '../config/tokenList'
 import { 
   placeHyperliquidTestOrder, 
   fetchHyperliquidOpenOrders,
-  closeAllHyperliquidPositions,
-  DEFAULT_TEST_ORDERS 
+  closeAllHyperliquidPositions
 } from '../lib/hyperliquidOrders'
 import { 
   getInitialCapital, 
@@ -61,13 +60,129 @@ function DeleteButton({ symbol, onRemove, isMobile }) {
   )
 }
 
+const MAX_ORDER_FORMS = 10
+const DEFAULT_ORDER_SIZE = '0.01'
+const MIN_ORDER_NOTIONAL_USDC = 15
+const TOKEN_SIZE_DECIMALS = {
+  BTC: 5,
+  ETH: 4,
+  SOL: 2,
+  BNB: 3,
+  MATIC: 1,
+  kPEPE: 0,
+  AVAX: 2,
+  ATOM: 2,
+  APT: 2,
+  ARB: 1
+}
+const DEFAULT_SIZE_DECIMALS = 4
+const TOKEN_MIN_SIZE_UNITS = {
+  BTC: 0.001,
+  ETH: 0.01
+}
+const TOKEN_PRICE_CONSTRAINTS = {
+  BTC: { tick: 1, decimals: 0 },
+  ETH: { tick: 0.1, decimals: 1 }
+}
+const DEFAULT_PRICE_DECIMALS = 4
+const PRICE_INPUT_STEP = '0.00000001'
+const PRICE_INPUT_MIN = '0.00000001'
+const PRICE_DISPLAY_FRACTION_DIGITS = 8
+const SMALL_VALUE_MAX_DECIMALS = 8
+
+const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
+
+const getSizeDecimals = (symbol) => {
+  if (!symbol) {
+    return DEFAULT_SIZE_DECIMALS
+  }
+  return TOKEN_SIZE_DECIMALS[symbol] ?? DEFAULT_SIZE_DECIMALS
+}
+
+const quantizeSize = (symbol, value, strategy = 'round') => {
+  const decimals = getSizeDecimals(symbol)
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return ''
+  }
+  const factor = 10 ** decimals
+  let scaled = numeric * factor
+  if (strategy === 'ceil') {
+    scaled = Math.ceil(scaled)
+  } else if (strategy === 'floor') {
+    scaled = Math.floor(scaled)
+  } else {
+    scaled = Math.round(scaled)
+  }
+  const safeScaled = Math.max(1, scaled)
+  const quantized = safeScaled / factor
+  return quantized.toFixed(decimals)
+}
+
+const applyMinSizeUnits = (symbol, sizeValue) => {
+  const minUnits = TOKEN_MIN_SIZE_UNITS[symbol]
+  const numericSize = Number(sizeValue)
+  if (!minUnits || !Number.isFinite(numericSize)) {
+    return sizeValue
+  }
+  if (numericSize >= minUnits) {
+    return sizeValue
+  }
+  const decimals = getSizeDecimals(symbol)
+  return minUnits.toFixed(decimals)
+}
+
+const getPriceConstraint = (symbol) => {
+  if (!symbol) {
+    return null
+  }
+  return TOKEN_PRICE_CONSTRAINTS[symbol] || null
+}
+
+const getPriceDecimals = (symbol) => {
+  const constraint = getPriceConstraint(symbol)
+  if (constraint?.decimals != null) {
+    return constraint.decimals
+  }
+  return PRICE_DISPLAY_FRACTION_DIGITS
+}
+
+const quantizePrice = (symbol, value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return ''
+  }
+  const constraint = getPriceConstraint(symbol)
+  if (!constraint) {
+    return numeric.toFixed(PRICE_DISPLAY_FRACTION_DIGITS)
+  }
+  const { tick, decimals = PRICE_DISPLAY_FRACTION_DIGITS } = constraint
+  if (!tick || tick <= 0) {
+    return numeric.toFixed(decimals)
+  }
+  const steps = Math.round(numeric / tick)
+  const quantized = steps * tick
+  const decimalPlaces = decimals ?? Math.max(0, (tick.toString().split('.')[1] || '').length)
+  return quantized.toFixed(decimalPlaces)
+}
+
+function createBlankOrder(symbol = '') {
+  return {
+    symbol,
+    side: 'buy',
+    size: DEFAULT_ORDER_SIZE,
+    price: '',
+    autoPrice: true,
+    autoSize: true
+  }
+}
+
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
   const [closeAllStatus, setCloseAllStatus] = useState({ state: 'idle', message: '', payload: null })
-  const [orderForms, setOrderForms] = useState(() => DEFAULT_TEST_ORDERS.map(order => ({ ...order })))
-  const hyperliquidSymbols = useMemo(() => getHyperliquidTokenSymbols(), [])
+  const [orderForms, setOrderForms] = useState(() => ([createBlankOrder()]))
 
   // Détection mobile
   useEffect(() => {
@@ -91,6 +206,23 @@ export default function Page2() {
       return symbol
     })
   }, [selectedTokens])
+
+  const orderableSymbols = selectedSymbols
+  const hasOrderableTokens = orderableSymbols.length > 0
+
+  const findCanonicalSymbol = useCallback((value) => {
+    const normalized = normalizeSymbol(value)
+    if (!normalized) {
+      return ''
+    }
+    const match = orderableSymbols.find((symbol) => normalizeSymbol(symbol) === normalized)
+    return match || ''
+  }, [orderableSymbols])
+
+  const isSymbolAllowed = useCallback(
+    (value) => Boolean(findCanonicalSymbol(value)),
+    [findCanonicalSymbol]
+  )
   
   // Créer tokensData à partir des tokens sélectionnés via service
   const tokensData = useMemo(() => {
@@ -144,6 +276,52 @@ export default function Page2() {
     
     return data
   }, [selectedTokens, getToken, tokens])
+
+  const tokenPriceMap = useMemo(() => {
+    return tokensData.reduce((acc, token) => {
+      const numericPrice = Number(token.price)
+      if (Number.isFinite(numericPrice)) {
+        acc[token.symbol] = numericPrice
+      }
+      return acc
+    }, {})
+  }, [tokensData])
+
+  const computeAutoLimitPrice = useCallback((symbol) => {
+    if (!symbol) return ''
+    const lastPrice = tokenPriceMap?.[symbol]
+    if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
+      return ''
+    }
+    return quantizePrice(symbol, lastPrice)
+  }, [tokenPriceMap])
+
+  const computeAutoSize = useCallback((symbol) => {
+    if (!symbol) return DEFAULT_ORDER_SIZE
+    const lastPrice = tokenPriceMap?.[symbol]
+    if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
+      return DEFAULT_ORDER_SIZE
+    }
+    const rawSize = MIN_ORDER_NOTIONAL_USDC / lastPrice
+    if (!Number.isFinite(rawSize) || rawSize <= 0) {
+      return DEFAULT_ORDER_SIZE
+    }
+    const quantized = quantizeSize(symbol, rawSize, 'ceil')
+    if (!quantized) {
+      return DEFAULT_ORDER_SIZE
+    }
+    return applyMinSizeUnits(symbol, quantized)
+  }, [tokenPriceMap])
+
+  const visibleOrderForms = useMemo(() => {
+    return orderForms.map((order) => {
+      if (!order.symbol) {
+        return order
+      }
+      return isSymbolAllowed(order.symbol) ? order : { ...order, symbol: '' }
+    })
+  }, [orderForms, isSymbolAllowed])
+
   
   // Simulateur de portfolio avec les tokens dynamiques
   const {
@@ -217,29 +395,72 @@ export default function Page2() {
   }
 
   const updateOrderField = (index, field, value) => {
-    const sanitizedValue = field === 'symbol' && typeof value === 'string'
-      ? value.toUpperCase()
-      : value
     setOrderForms((prev) =>
-      prev.map((order, currentIndex) =>
-        currentIndex === index ? { ...order, [field]: sanitizedValue } : order
-      )
+      prev.map((order, currentIndex) => {
+        if (currentIndex !== index) {
+          return order
+        }
+        if (field === 'symbol') {
+          const canonical = findCanonicalSymbol(value)
+          if (!canonical) {
+            return {
+              ...order,
+              symbol: '',
+              price: '',
+              autoPrice: true,
+              size: DEFAULT_ORDER_SIZE,
+              autoSize: true
+            }
+          }
+          return {
+            ...order,
+            symbol: canonical,
+            price: computeAutoLimitPrice(canonical) || '',
+            autoPrice: true,
+            size: computeAutoSize(canonical),
+            autoSize: true
+          }
+        }
+        if (field === 'size') {
+          const processed = quantizeSize(order.symbol, value, 'round') || value
+          const clamped = applyMinSizeUnits(order.symbol, processed)
+          return {
+            ...order,
+            size: clamped,
+            autoSize: false
+          }
+        }
+        if (field === 'price') {
+          const processedPrice = quantizePrice(order.symbol, value) || value
+          return {
+            ...order,
+            price: processedPrice,
+            autoPrice: false
+          }
+        }
+        return { ...order, [field]: value }
+      })
     )
   }
 
   const addOrderForm = () => {
+    if (!hasOrderableTokens) {
+      return
+    }
     setOrderForms((prev) => {
-      if (prev.length >= 10) {
+      if (prev.length >= MAX_ORDER_FORMS) {
         return prev
       }
-      const fallbackSymbol = prev[0]?.symbol || hyperliquidSymbols[0] || 'BTC'
+      const fallbackSymbol = orderableSymbols[(prev.length) % orderableSymbols.length] || orderableSymbols[0]
       return [
         ...prev,
         {
+          ...createBlankOrder(fallbackSymbol),
           symbol: fallbackSymbol,
-          side: 'buy',
-          size: '0.01',
-          price: ''
+          price: computeAutoLimitPrice(fallbackSymbol) || '',
+          size: computeAutoSize(fallbackSymbol),
+          autoPrice: true,
+          autoSize: true
         }
       ]
     })
@@ -255,7 +476,23 @@ export default function Page2() {
   }
 
   const resetOrderForms = () => {
-    setOrderForms(DEFAULT_TEST_ORDERS.map((order) => ({ ...order })))
+    if (!hasOrderableTokens) {
+      setOrderForms([createBlankOrder()])
+      return
+    }
+    const defaults = orderableSymbols.slice(0, 2).map((symbol) => ({
+      ...createBlankOrder(symbol),
+      symbol,
+      price: computeAutoLimitPrice(symbol) || '',
+      size: computeAutoSize(symbol),
+      autoPrice: true,
+      autoSize: true
+    }))
+    if (defaults.length === 0) {
+      setOrderForms([createBlankOrder(orderableSymbols[0])])
+      return
+    }
+    setOrderForms(defaults)
   }
 
   const handleCapitalChange = (newValue) => {
@@ -278,13 +515,32 @@ export default function Page2() {
   }
 
   const sendTestOrder = async () => {
+    if (!hasOrderableTokens) {
+      setOrderStatus({
+        state: 'error',
+        message: 'Ajoute d’abord des tokens depuis Épicerie fine pour envoyer un ordre.',
+        payload: null
+      })
+      return
+    }
+
     const sanitizedOrders = orderForms
-      .map((order) => ({
-        symbol: order.symbol?.trim().toUpperCase(),
-        side: order.side,
-        size: order.size,
-        price: order.price
-      }))
+      .map((order) => {
+        const canonicalSymbol = findCanonicalSymbol(order.symbol)
+        const computedSize = order.autoSize
+          ? computeAutoSize(canonicalSymbol)
+          : quantizeSize(canonicalSymbol, order.size, 'round')
+        const effectiveSize = applyMinSizeUnits(canonicalSymbol, computedSize)
+        const effectivePrice = order.autoPrice
+          ? computeAutoLimitPrice(canonicalSymbol)
+          : quantizePrice(canonicalSymbol, order.price)
+        return {
+          symbol: canonicalSymbol ? canonicalSymbol.trim().toUpperCase() : '',
+          side: order.side,
+          size: effectiveSize,
+          price: effectivePrice
+        }
+      })
       .filter((order) => order.symbol && order.size && order.price)
 
     if (sanitizedOrders.length === 0) {
@@ -313,10 +569,21 @@ export default function Page2() {
     setOpenOrdersStatus({ state: 'loading', message: 'Récupération des ordres ouverts Hyperliquid…', payload: null })
     try {
       const response = await fetchHyperliquidOpenOrders()
-      const count = response.openOrders?.length ?? 0
+      const orderCount = response.openOrders?.length ?? 0
+      const positionCount = response.openPositions?.length ?? 0
+      const summaryParts = []
+      if (orderCount > 0) {
+        summaryParts.push(`${orderCount} ordre(s) au carnet`)
+      }
+      if (positionCount > 0) {
+        summaryParts.push(`${positionCount} position(s) ouvertes`)
+      }
+      const statusMessage = summaryParts.length > 0
+        ? summaryParts.join(' • ')
+        : 'Aucun ordre ni position ouverte.'
       setOpenOrdersStatus({
         state: 'success',
-        message: count === 0 ? 'Aucun ordre ouvert.' : `${count} ordre(s) ouverts en file` ,
+        message: statusMessage,
         payload: response
       })
     } catch (error) {
@@ -351,11 +618,23 @@ export default function Page2() {
   const openOrdersStatusColor = statusColorMap[openOrdersStatus.state]
   const closeAllStatusColor = statusColorMap[closeAllStatus.state]
   const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
+  const openPositionsList = openOrdersStatus.payload?.openPositions ?? []
 
-  const formatNumericString = (value, maximumFractionDigits = 4) => {
+  const formatNumericString = (value, options = {}) => {
+    const {
+      maximumFractionDigits = 4,
+      preserveTinyValues = false
+    } = options
     const numeric = Number(value)
     if (!Number.isFinite(numeric)) return value ?? '—'
-    return numeric.toLocaleString('fr-FR', { maximumFractionDigits })
+    const isTiny = preserveTinyValues && Math.abs(numeric) < 1
+    const digits = isTiny
+      ? Math.max(maximumFractionDigits, SMALL_VALUE_MAX_DECIMALS)
+      : maximumFractionDigits
+    return numeric.toLocaleString('fr-FR', {
+      maximumFractionDigits: digits,
+      minimumFractionDigits: isTiny ? Math.min(4, digits) : 0
+    })
   }
 
   const formatTimestamp = (value) => {
@@ -411,28 +690,58 @@ export default function Page2() {
           </div>
           <button
             onClick={sendTestOrder}
-            disabled={orderStatus.state === 'loading'}
+            disabled={orderStatus.state === 'loading' || !hasOrderableTokens}
             style={{
               padding: '12px 20px',
               borderRadius: '10px',
               border: 'none',
-              background: orderStatus.state === 'loading' ? '#475569' : '#3b82f6',
+              background:
+                orderStatus.state === 'loading'
+                  ? '#475569'
+                  : hasOrderableTokens
+                    ? '#3b82f6'
+                    : '#334155',
               color: 'white',
               fontWeight: '600',
-              cursor: orderStatus.state === 'loading' ? 'not-allowed' : 'pointer',
+              cursor:
+                orderStatus.state === 'loading' || !hasOrderableTokens ? 'not-allowed' : 'pointer',
               transition: 'background 0.2s'
             }}
           >
-            {orderStatus.state === 'loading' ? 'Envoi…' : `Placer ${orderForms.length} ordre(s)`}
+            {orderStatus.state === 'loading'
+              ? 'Envoi…'
+              : hasOrderableTokens
+                ? `Placer ${orderForms.length} ordre(s)`
+                : 'Ajoute des tokens avant'}
           </button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
-          {orderForms.map((order, index) => {
+          {!hasOrderableTokens && (
+            <div
+              style={{
+                background: '#1e293b',
+                borderRadius: '12px',
+                padding: '16px',
+                border: '1px dashed #334155',
+                color: '#cbd5f5',
+                fontSize: '14px'
+              }}
+            >
+              🧺 Ajoute des tokens dans ton panier depuis « Épicerie fine » pour pouvoir sélectionner des ordres ici.
+            </div>
+          )}
+          {visibleOrderForms.map((order, index) => {
             const tokenConfig = order.symbol ? getTokenConfig(order.symbol) : null
-            const selectOptions = order.symbol && !hyperliquidSymbols.includes(order.symbol)
-              ? [order.symbol, ...hyperliquidSymbols]
-              : hyperliquidSymbols
+            const selectOptions = orderableSymbols
+            const safeSymbol = isSymbolAllowed(order.symbol) ? order.symbol : ''
+            const displayedPrice = order.autoPrice && safeSymbol
+              ? computeAutoLimitPrice(safeSymbol) || ''
+              : order.price
+            const livePriceNumber = safeSymbol ? tokenPriceMap?.[safeSymbol] : null
+            const livePriceDisplay = Number.isFinite(livePriceNumber)
+              ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true })} USDC`
+              : null
 
             return (
               <div
@@ -476,16 +785,18 @@ export default function Page2() {
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Token</label>
                     <select
-                      value={order.symbol || ''}
+                      value={safeSymbol}
                       onChange={(e) => updateOrderField(index, 'symbol', e.target.value)}
+                      disabled={!hasOrderableTokens}
                       style={{
                         width: '100%',
                         marginTop: '4px',
                         borderRadius: '10px',
                         padding: '10px',
-                        background: '#0f172a',
+                        background: hasOrderableTokens ? '#0f172a' : '#1e293b',
                         color: '#e5e7eb',
-                        border: '1px solid #1e293b'
+                        border: '1px solid #1e293b',
+                        cursor: hasOrderableTokens ? 'pointer' : 'not-allowed'
                       }}
                     >
                       <option value="">Sélectionner</option>
@@ -519,11 +830,11 @@ export default function Page2() {
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille</label>
                     <input
                       type="number"
-                      min="0"
-                      step="0.00001"
+                      min={PRICE_INPUT_MIN}
+                      step={PRICE_INPUT_STEP}
                       value={order.size}
                       onChange={(e) => updateOrderField(index, 'size', e.target.value)}
-                      placeholder="0.01"
+                      placeholder={DEFAULT_ORDER_SIZE}
                       style={{
                         width: '100%',
                         marginTop: '4px',
@@ -534,15 +845,19 @@ export default function Page2() {
                         border: '1px solid #1e293b'
                       }}
                     />
-                    <small style={{ color: '#475569' }}>Exprimé en unités de token</small>
+                    <small style={{ color: '#475569' }}>
+                      {order.autoSize && safeSymbol
+                        ? `Auto: ~${MIN_ORDER_NOTIONAL_USDC} USDC notional`
+                        : 'Exprimé en unités de token'}
+                    </small>
                   </div>
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDC)</label>
                     <input
                       type="number"
-                      min="0"
-                      step="0.01"
-                      value={order.price}
+                      min={PRICE_INPUT_MIN}
+                      step={PRICE_INPUT_STEP}
+                      value={displayedPrice}
                       onChange={(e) => updateOrderField(index, 'price', e.target.value)}
                       placeholder="87000"
                       style={{
@@ -555,37 +870,48 @@ export default function Page2() {
                         border: '1px solid #1e293b'
                       }}
                     />
+                    <small style={{ color: '#475569' }}>
+                      {order.autoPrice && safeSymbol
+                        ? livePriceDisplay
+                          ? `Auto: prix Hyperliquid live (${livePriceDisplay})`
+                          : 'Auto: prix Hyperliquid live (chargement…)'
+                        : 'Définis ton propre prix'}
+                    </small>
                   </div>
                 </div>
               </div>
             )
           })}
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            {/* Boutons d'ajout / reset */}
             <button
               onClick={addOrderForm}
-              disabled={orderForms.length >= 10}
+              disabled={!hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS}
               style={{
                 padding: '10px 16px',
                 borderRadius: '10px',
                 border: '1px solid #334155',
-                background: orderForms.length >= 10 ? '#1e293b' : '#0f172a',
+                background:
+                  !hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS ? '#1e293b' : '#0f172a',
                 color: '#e5e7eb',
-                cursor: orderForms.length >= 10 ? 'not-allowed' : 'pointer'
+                cursor:
+                  !hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS ? 'not-allowed' : 'pointer'
               }}
             >
               + Ajouter un ordre
             </button>
             <button
               onClick={resetOrderForms}
+              disabled={!hasOrderableTokens}
               style={{
                 padding: '10px 16px',
                 borderRadius: '10px',
                 border: '1px solid #1e293b',
-                background: '#1e293b',
+                background: !hasOrderableTokens ? '#0f172a' : '#1e293b',
                 color: '#e5e7eb'
               }}
             >
-              Réinitialiser BTC / ETH
+              Réinitialiser
             </button>
           </div>
         </div>
@@ -638,7 +964,7 @@ export default function Page2() {
               📋 Lister mes ordres ouverts
             </h3>
             <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Vérifie en direct ce que Hyperliquid retient encore en carnet pour le compte API.
+              Vérifie en direct les ordres encore en carnet ET les positions actives sur Hyperliquid.
             </p>
           </div>
           <button
@@ -655,7 +981,7 @@ export default function Page2() {
               transition: 'background 0.2s'
             }}
           >
-            {openOrdersStatus.state === 'loading' ? 'Chargement…' : 'Lister mes ordres ouverts'}
+            {openOrdersStatus.state === 'loading' ? 'Chargement…' : 'Lister ordres & positions'}
           </button>
         </div>
 
@@ -665,60 +991,130 @@ export default function Page2() {
               {openOrdersStatus.message}
             </p>
             {openOrdersStatus.payload && (
-              openOrdersList.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {openOrdersList.map((order) => (
-                    <div
-                      key={order.oid}
-                      style={{
-                        background: '#020617',
-                        border: '1px solid #1e293b',
-                        borderRadius: '12px',
-                        padding: '16px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <span style={{ color: '#f8fafc', fontWeight: '600' }}>{order.coin}</span>
-                        <span
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <h4 style={{ color: '#e5e7eb', margin: '0 0 8px', fontSize: '15px' }}>Ordres en carnet</h4>
+                  {openOrdersList.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {openOrdersList.map((order) => (
+                        <div
+                          key={order.oid}
                           style={{
-                            color: order.side === 'buy' ? '#22c55e' : '#f87171',
-                            fontWeight: '600'
+                            background: '#020617',
+                            border: '1px solid #1e293b',
+                            borderRadius: '12px',
+                            padding: '16px'
                           }}
                         >
-                          {order.side === 'buy' ? 'Long (achat)' : 'Short (vente)'}
-                        </span>
-                      </div>
-                      <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
-                        <div>
-                          Prix limite : <strong>{formatNumericString(order.limitPx, 2)} USDC</strong>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ color: '#f8fafc', fontWeight: '600' }}>{order.coin}</span>
+                            <span
+                              style={{
+                                color: order.side === 'buy' ? '#22c55e' : '#f87171',
+                                fontWeight: '600'
+                              }}
+                            >
+                              {order.side === 'buy' ? 'Long (achat)' : 'Short (vente)'}
+                            </span>
+                          </div>
+                          <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
+                            <div>
+                              Prix limite : <strong>{formatNumericString(order.limitPx, { maximumFractionDigits: 2, preserveTinyValues: true })} USDC</strong>
+                            </div>
+                            <div>
+                              Taille restante : <strong>{formatNumericString(order.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> (initiale {formatNumericString(order.origSz, { maximumFractionDigits: 5, preserveTinyValues: true })})
+                            </div>
+                            <div>
+                              Timestamp : <strong>{formatTimestamp(order.timestamp)}</strong>
+                            </div>
+                            <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                              OID #{order.oid} {order.reduceOnly ? '• Reduce only' : ''}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          Taille restante : <strong>{formatNumericString(order.size, 5)}</strong> (initiale {formatNumericString(order.origSz, 5)})
-                        </div>
-                        <div>
-                          Timestamp : <strong>{formatTimestamp(order.timestamp)}</strong>
-                        </div>
-                        <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                          OID #{order.oid} {order.reduceOnly ? '• Reduce only' : ''}
-                        </div>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div
+                      style={{
+                        background: '#020617',
+                        border: '1px dashed #1e293b',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        color: '#cbd5f5',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Aucun ordre ouvert sur ce compte Hyperliquid.
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div
-                  style={{
-                    background: '#020617',
-                    border: '1px dashed #1e293b',
-                    borderRadius: '12px',
-                    padding: '16px',
-                    color: '#cbd5f5',
-                    fontSize: '13px'
-                  }}
-                >
-                  Aucun ordre ouvert sur ce compte Hyperliquid.
+                <div>
+                  <h4 style={{ color: '#e5e7eb', margin: '0 0 8px', fontSize: '15px' }}>Positions actives</h4>
+                  {openPositionsList.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {openPositionsList.map((position, index) => (
+                        <div
+                          key={`${position.coin}-${position.entryTime || index}`}
+                          style={{
+                            background: '#020617',
+                            border: '1px solid #1e293b',
+                            borderRadius: '12px',
+                            padding: '16px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <span style={{ color: '#f8fafc', fontWeight: '600' }}>{position.coin}</span>
+                            <span
+                              style={{
+                                color: position.side === 'long' ? '#22c55e' : '#f87171',
+                                fontWeight: '600'
+                              }}
+                            >
+                              {position.side === 'long' ? 'Long (achat)' : 'Short (vente)'}
+                            </span>
+                          </div>
+                          <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
+                            <div>
+                              Taille : <strong>{formatNumericString(position.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> token(s)
+                            </div>
+                            <div>
+                              Prix d'entrée : <strong>{formatNumericString(position.entryPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                            </div>
+                            <div>
+                              Mark actuel : <strong>{formatNumericString(position.markPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                            </div>
+                            <div>
+                              Liquidation : <strong>{formatNumericString(position.liqPx, { maximumFractionDigits: 2, preserveTinyValues: true }) || '—'} USDC</strong>
+                            </div>
+                            <div>
+                              Levier estimé : <strong>{position.leverage ? `${position.leverage}x` : '—'}</strong>
+                            </div>
+                            {position.entryTime && (
+                              <div>
+                                Entrée le : <strong>{formatTimestamp(position.entryTime)}</strong>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        background: '#020617',
+                        border: '1px dashed #1e293b',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        color: '#cbd5f5',
+                        fontSize: '13px'
+                      }}
+                    >
+                      Aucune position ouverte pour le moment.
+                    </div>
+                  )}
                 </div>
-              )
+              </div>
             )}
           </div>
         )}

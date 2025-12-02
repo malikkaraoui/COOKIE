@@ -133,11 +133,22 @@ export async function fetchHyperliquidOpenOrders() {
     throw new Error(`Erreur backend (${response.status}): ${message}`)
   }
 
-  if (!parsed?.openOrders) {
+  const ordersArray = Array.isArray(parsed?.openOrders) ? parsed.openOrders : null
+  const positionsArray = Array.isArray(parsed?.openPositions) ? parsed.openPositions : null
+
+  if (!ordersArray) {
     throw new Error('Réponse inattendue: openOrders manquant')
   }
 
-  return parsed
+  if (!positionsArray) {
+    throw new Error('Réponse inattendue: openPositions manquant')
+  }
+
+  return {
+    ...parsed,
+    openOrders: ordersArray,
+    openPositions: positionsArray
+  }
 }
 
 export async function closeAllHyperliquidPositions() {
