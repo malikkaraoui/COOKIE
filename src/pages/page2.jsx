@@ -17,6 +17,7 @@ import { getTokenConfig } from '../config/tokenList'
 import { 
   placeHyperliquidTestOrder, 
   fetchHyperliquidOpenOrders,
+  closeAllHyperliquidPositions,
   DEFAULT_TEST_ORDER 
 } from '../lib/hyperliquidOrders'
 import { 
@@ -64,6 +65,7 @@ export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
+  const [closeAllStatus, setCloseAllStatus] = useState({ state: 'idle', message: '', payload: null })
 
   // Détection mobile
   useEffect(() => {
@@ -256,6 +258,22 @@ export default function Page2() {
     }
   }
 
+  const closeAllHyperliquid = async () => {
+    setCloseAllStatus({ state: 'loading', message: 'Fermeture des positions Hyperliquid…', payload: null })
+    try {
+      const response = await closeAllHyperliquidPositions()
+      const canceled = response.canceledOrders ?? 0
+      const closed = response.closeOrdersPlaced ?? 0
+      setCloseAllStatus({
+        state: 'success',
+        message: `Annulations: ${canceled}, ordres de fermeture envoyés: ${closed}`,
+        payload: response
+      })
+    } catch (error) {
+      setCloseAllStatus({ state: 'error', message: error.message, payload: null })
+    }
+  }
+
   const statusColorMap = {
     idle: '#94a3b8',
     loading: '#fbbf24',
@@ -265,6 +283,7 @@ export default function Page2() {
 
   const orderStatusColor = statusColorMap[orderStatus.state]
   const openOrdersStatusColor = statusColorMap[openOrdersStatus.state]
+  const closeAllStatusColor = statusColorMap[closeAllStatus.state]
   const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
 
   const formatNumericString = (value, maximumFractionDigits = 4) => {
@@ -471,6 +490,75 @@ export default function Page2() {
                   Aucun ordre ouvert sur ce compte Hyperliquid.
                 </div>
               )
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Fermer toutes les positions Hyperliquid */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '24px',
+          border: '1px solid #1e293b'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
+              🔒 Fermer toutes les positions
+            </h3>
+            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
+              Annule les ordres encore au carnet et envoie des ordres IOC inverses pour neutraliser la position.
+            </p>
+          </div>
+          <button
+            onClick={closeAllHyperliquid}
+            disabled={closeAllStatus.state === 'loading'}
+            style={{
+              padding: '12px 20px',
+              borderRadius: '10px',
+              border: 'none',
+              background: closeAllStatus.state === 'loading' ? '#475569' : '#f97316',
+              color: 'white',
+              fontWeight: '600',
+              cursor: closeAllStatus.state === 'loading' ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s'
+            }}
+          >
+            {closeAllStatus.state === 'loading' ? 'Fermeture…' : 'Fermer toutes les positions'}
+          </button>
+        </div>
+
+        {closeAllStatus.state !== 'idle' && (
+          <div style={{ marginTop: '16px' }}>
+            <p style={{ color: closeAllStatusColor, fontSize: '14px', marginBottom: '8px' }}>
+              {closeAllStatus.message}
+            </p>
+            {closeAllStatus.payload && (
+              <pre
+                style={{
+                  background: '#020617',
+                  color: '#e2e8f0',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  overflowX: 'auto',
+                  border: '1px solid #1e293b',
+                  fontSize: '12px'
+                }}
+              >
+                {JSON.stringify(closeAllStatus.payload, null, 2)}
+              </pre>
             )}
           </div>
         )}

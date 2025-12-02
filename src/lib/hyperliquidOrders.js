@@ -2,6 +2,7 @@ const PROD_FUNCTIONS_BASE_URL =
   "https://us-central1-cookie1-b3592.cloudfunctions.net"
 const PLACE_TEST_ORDER_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/placeTestOrder`
 const LIST_OPEN_ORDERS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/listOpenOrders`
+const CLOSE_ALL_POSITIONS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/closeAllPositions`
 
 function normalizeOrderPayload(payload) {
   if (typeof payload !== 'object' || payload === null) {
@@ -104,6 +105,41 @@ export async function fetchHyperliquidOpenOrders() {
 
   if (!parsed?.openOrders) {
     throw new Error('Réponse inattendue: openOrders manquant')
+  }
+
+  return parsed
+}
+
+export async function closeAllHyperliquidPositions() {
+  let response
+  try {
+    response = await fetch(CLOSE_ALL_POSITIONS_ENDPOINT, {
+      method: 'POST'
+    })
+  } catch (networkError) {
+    throw new Error(
+      `Impossible de contacter closeAllPositions (${CLOSE_ALL_POSITIONS_ENDPOINT}). ` +
+        'Vérifie que la nouvelle fonction Firebase est bien déployée et joignable. ' +
+        `Détails: ${networkError.message}`
+    )
+  }
+
+  const rawText = await response.text()
+  let parsed
+
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null
+  } catch (error) {
+    throw new Error(`Réponse invalide de closeAllPositions: ${rawText} (${error.message})`)
+  }
+
+  if (!response.ok) {
+    const message = parsed?.error || parsed?.message || response.statusText
+    throw new Error(`Erreur backend (${response.status}): ${message}`)
+  }
+
+  if (!parsed?.ok) {
+    throw new Error('Réponse inattendue: drapeau ok manquant')
   }
 
   return parsed
