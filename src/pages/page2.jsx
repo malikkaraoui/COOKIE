@@ -14,6 +14,7 @@ import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
 import { getTokenConfig } from '../config/tokenList'
+import { placeHyperliquidTestOrder, DEFAULT_TEST_ORDER } from '../lib/hyperliquidOrders'
 import { 
   getInitialCapital, 
   saveInitialCapital, 
@@ -57,6 +58,7 @@ function DeleteButton({ symbol, onRemove, isMobile }) {
 
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
+  const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
 
   // Détection mobile
   useEffect(() => {
@@ -224,6 +226,23 @@ export default function Page2() {
     }, 600)
   }
 
+  const sendTestOrder = async () => {
+    setOrderStatus({ state: 'loading', message: 'Envoi de la commande test Hyperliquid…', payload: null })
+    try {
+      const response = await placeHyperliquidTestOrder(DEFAULT_TEST_ORDER)
+      setOrderStatus({ state: 'success', message: 'Ordre envoyé avec succès ✅', payload: response })
+    } catch (error) {
+      setOrderStatus({ state: 'error', message: error.message, payload: null })
+    }
+  }
+
+  const orderStatusColor = {
+    idle: '#94a3b8',
+    loading: '#fbbf24',
+    success: '#22c55e',
+    error: '#f87171'
+  }[orderStatus.state]
+
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
       {/* Header */}
@@ -240,6 +259,75 @@ export default function Page2() {
         <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
           Simulateur de portfolio • Optimisez vos allocations
         </p>
+      </div>
+
+      {/* Bouton Hyperliquid Testnet */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '24px',
+          border: '1px solid #1e293b'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
+              🧪 Envoyer un ordre test Hyperliquid
+            </h3>
+            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
+              Permet de vérifier depuis le front que l’API Firebase → Hyperliquid fonctionne (testnet).
+            </p>
+          </div>
+          <button
+            onClick={sendTestOrder}
+            disabled={orderStatus.state === 'loading'}
+            style={{
+              padding: '12px 20px',
+              borderRadius: '10px',
+              border: 'none',
+              background: orderStatus.state === 'loading' ? '#475569' : '#3b82f6',
+              color: 'white',
+              fontWeight: '600',
+              cursor: orderStatus.state === 'loading' ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s'
+            }}
+          >
+            {orderStatus.state === 'loading' ? 'Envoi…' : 'Placer l’ordre test'}
+          </button>
+        </div>
+
+        {orderStatus.state !== 'idle' && (
+          <div style={{ marginTop: '16px' }}>
+            <p style={{ color: orderStatusColor, fontSize: '14px', marginBottom: '8px' }}>
+              {orderStatus.message}
+            </p>
+            {orderStatus.payload && (
+              <pre
+                style={{
+                  background: '#020617',
+                  color: '#e2e8f0',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  overflowX: 'auto',
+                  border: '1px solid #1e293b',
+                  fontSize: '12px'
+                }}
+              >
+                {JSON.stringify(orderStatus.payload, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Capital Initial Slider */}
