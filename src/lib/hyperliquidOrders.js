@@ -4,43 +4,73 @@ const PLACE_TEST_ORDER_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/placeTestOrder`
 const LIST_OPEN_ORDERS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/listOpenOrders`
 const CLOSE_ALL_POSITIONS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/closeAllPositions`
 
-function normalizeOrderPayload(payload) {
-  if (typeof payload !== 'object' || payload === null) {
-    throw new Error('Order payload manquant')
+const ALLOWED_SIDES = ['buy', 'sell']
+
+function toStringValue(value, field) {
+  if (value == null) {
+    throw new Error(`Le champ "${field}" est requis`)
+  }
+  const stringValue = typeof value === 'number' ? value.toString() : String(value)
+  if (stringValue.trim().length === 0) {
+    throw new Error(`Le champ "${field}" ne peut pas être vide`)
+  }
+  return stringValue
+}
+
+function normalizeSingleOrder(order, index) {
+  if (!order || typeof order !== 'object') {
+    throw new Error(`Ordre #${index + 1}: données manquantes`)
   }
 
-  const { asset, side, size, price } = payload
-
-  if (typeof asset !== 'number' || Number.isNaN(asset)) {
-    throw new Error('Le champ "asset" doit être un nombre')
+  const normalizedSide = order.side?.toLowerCase()
+  if (!ALLOWED_SIDES.includes(normalizedSide)) {
+    throw new Error(`Ordre #${index + 1}: 'side' doit être 'buy' ou 'sell'`)
   }
 
-  const normalizedSide = side?.toLowerCase()
-  if (normalizedSide !== 'buy' && normalizedSide !== 'sell') {
-    throw new Error('Le champ "side" doit être "buy" ou "sell"')
+  const normalizedOrder = {
+    symbol: order.symbol ? String(order.symbol).toUpperCase().trim() : undefined,
+    asset:
+      typeof order.asset === 'number' && Number.isFinite(order.asset)
+        ? order.asset
+        : undefined,
+    side: normalizedSide,
+    size: toStringValue(order.size, 'size'),
+    price: toStringValue(order.price, 'price'),
+    tif: order.tif,
+    reduceOnly: Boolean(order.reduceOnly)
   }
 
-  const toStringValue = (value, field) => {
-    if (value == null) {
-      throw new Error(`Le champ "${field}" est requis`)
-    }
-    const stringValue = typeof value === 'number' ? value.toString() : value
-    if (stringValue.trim().length === 0) {
-      throw new Error(`Le champ "${field}" ne peut pas être vide`)
-    }
-    return stringValue
+  if (!normalizedOrder.symbol && normalizedOrder.asset == null) {
+    throw new Error(`Ordre #${index + 1}: renseigne 'symbol' ou 'asset'`)
+  }
+
+  return normalizedOrder
+}
+
+function normalizeOrdersPayload(payload) {
+  const ordersArray = Array.isArray(payload)
+    ? payload
+    : Array.isArray(payload?.orders)
+      ? payload.orders
+      : payload
+        ? [payload]
+        : []
+
+  if (!ordersArray.length) {
+    throw new Error('Fournis au moins un ordre à envoyer')
+  }
+
+  if (ordersArray.length > 10) {
+    throw new Error('Maximum 10 ordres simultanés côté UI')
   }
 
   return {
-    asset,
-    side: normalizedSide,
-    size: toStringValue(size, 'size'),
-    price: toStringValue(price, 'price')
+    orders: ordersArray.map((order, index) => normalizeSingleOrder(order, index))
   }
 }
 
 export async function placeHyperliquidTestOrder(payload) {
-  const body = normalizeOrderPayload(payload)
+  const body = normalizeOrdersPayload(payload)
 
   let response
   try {
@@ -145,9 +175,17 @@ export async function closeAllHyperliquidPositions() {
   return parsed
 }
 
-export const DEFAULT_TEST_ORDER = {
-  asset: 3,
-  side: 'buy',
-  size: '0.01',
-  price: '85650'
-}
+export const DEFAULT_TEST_ORDERS = [
+  {
+    symbol: 'BTC',
+    side: 'buy',
+    size: '0.01',
+    price: '87300'
+  },
+  {
+    symbol: 'ETH',
+    side: 'buy',
+    size: '0.05',
+    price: '2790'
+  }
+]

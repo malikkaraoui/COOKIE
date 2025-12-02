@@ -13,12 +13,12 @@ import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
-import { getTokenConfig } from '../config/tokenList'
+import { getTokenConfig, getHyperliquidTokenSymbols } from '../config/tokenList'
 import { 
   placeHyperliquidTestOrder, 
   fetchHyperliquidOpenOrders,
   closeAllHyperliquidPositions,
-  DEFAULT_TEST_ORDER 
+  DEFAULT_TEST_ORDERS 
 } from '../lib/hyperliquidOrders'
 import { 
   getInitialCapital, 
@@ -66,6 +66,8 @@ export default function Page2() {
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
   const [closeAllStatus, setCloseAllStatus] = useState({ state: 'idle', message: '', payload: null })
+  const [orderForms, setOrderForms] = useState(() => DEFAULT_TEST_ORDERS.map(order => ({ ...order })))
+  const hyperliquidSymbols = useMemo(() => getHyperliquidTokenSymbols(), [])
 
   // Détection mobile
   useEffect(() => {
@@ -214,6 +216,48 @@ export default function Page2() {
     }
   }
 
+  const updateOrderField = (index, field, value) => {
+    const sanitizedValue = field === 'symbol' && typeof value === 'string'
+      ? value.toUpperCase()
+      : value
+    setOrderForms((prev) =>
+      prev.map((order, currentIndex) =>
+        currentIndex === index ? { ...order, [field]: sanitizedValue } : order
+      )
+    )
+  }
+
+  const addOrderForm = () => {
+    setOrderForms((prev) => {
+      if (prev.length >= 10) {
+        return prev
+      }
+      const fallbackSymbol = prev[0]?.symbol || hyperliquidSymbols[0] || 'BTC'
+      return [
+        ...prev,
+        {
+          symbol: fallbackSymbol,
+          side: 'buy',
+          size: '0.01',
+          price: ''
+        }
+      ]
+    })
+  }
+
+  const removeOrderForm = (index) => {
+    setOrderForms((prev) => {
+      if (prev.length === 1) {
+        return prev
+      }
+      return prev.filter((_, currentIndex) => currentIndex !== index)
+    })
+  }
+
+  const resetOrderForms = () => {
+    setOrderForms(DEFAULT_TEST_ORDERS.map((order) => ({ ...order })))
+  }
+
   const handleCapitalChange = (newValue) => {
     setCapitalInitial(newValue)
 
@@ -234,10 +278,32 @@ export default function Page2() {
   }
 
   const sendTestOrder = async () => {
-    setOrderStatus({ state: 'loading', message: 'Envoi de la commande test Hyperliquid…', payload: null })
+    const sanitizedOrders = orderForms
+      .map((order) => ({
+        symbol: order.symbol?.trim().toUpperCase(),
+        side: order.side,
+        size: order.size,
+        price: order.price
+      }))
+      .filter((order) => order.symbol && order.size && order.price)
+
+    if (sanitizedOrders.length === 0) {
+      setOrderStatus({
+        state: 'error',
+        message: 'Ajoute au moins un ordre valide (token, taille, prix)',
+        payload: null
+      })
+      return
+    }
+
+    setOrderStatus({ state: 'loading', message: 'Envoi des ordres Hyperliquid…', payload: null })
     try {
-      const response = await placeHyperliquidTestOrder(DEFAULT_TEST_ORDER)
-      setOrderStatus({ state: 'success', message: 'Ordre envoyé avec succès ✅', payload: response })
+      const response = await placeHyperliquidTestOrder({ orders: sanitizedOrders })
+      setOrderStatus({
+        state: 'success',
+        message: `${sanitizedOrders.length} ordre(s) envoyés ✅`,
+        payload: response
+      })
     } catch (error) {
       setOrderStatus({ state: 'error', message: error.message, payload: null })
     }
@@ -337,10 +403,10 @@ export default function Page2() {
         >
           <div style={{ flex: 1 }}>
             <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-              🧪 Envoyer un ordre test Hyperliquid
+              🧪 Envoyer des ordres Hyperliquid
             </h3>
             <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Permet de vérifier depuis le front que l’API Firebase → Hyperliquid fonctionne (testnet).
+              Compose jusqu’à 10 ordres limite (token, côté, taille, prix) puis envoie-les vers Hyperliquid en un clic.
             </p>
           </div>
           <button
@@ -357,8 +423,171 @@ export default function Page2() {
               transition: 'background 0.2s'
             }}
           >
-            {orderStatus.state === 'loading' ? 'Envoi…' : 'Placer l’ordre test'}
+            {orderStatus.state === 'loading' ? 'Envoi…' : `Placer ${orderForms.length} ordre(s)`}
           </button>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
+          {orderForms.map((order, index) => {
+            const tokenConfig = order.symbol ? getTokenConfig(order.symbol) : null
+            const selectOptions = order.symbol && !hyperliquidSymbols.includes(order.symbol)
+              ? [order.symbol, ...hyperliquidSymbols]
+              : hyperliquidSymbols
+
+            return (
+              <div
+                key={`order-form-${index}`}
+                style={{
+                  background: '#020617',
+                  border: '1px solid #1e293b',
+                  borderRadius: '14px',
+                  padding: '16px'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
+                  <div>
+                    <p style={{ margin: 0, color: '#e5e7eb', fontWeight: 600 }}>Ordre #{index + 1}</p>
+                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
+                      {tokenConfig ? tokenConfig.name : 'Sélectionne un token'}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => removeOrderForm(index)}
+                    disabled={orderForms.length === 1}
+                    style={{
+                      border: '1px solid #ef4444',
+                      background: orderForms.length === 1 ? '#1e293b' : '#ef444433',
+                      color: '#fca5a5',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      cursor: orderForms.length === 1 ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    Retirer
+                  </button>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                    gap: '12px'
+                  }}
+                >
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Token</label>
+                    <select
+                      value={order.symbol || ''}
+                      onChange={(e) => updateOrderField(index, 'symbol', e.target.value)}
+                      style={{
+                        width: '100%',
+                        marginTop: '4px',
+                        borderRadius: '10px',
+                        padding: '10px',
+                        background: '#0f172a',
+                        color: '#e5e7eb',
+                        border: '1px solid #1e293b'
+                      }}
+                    >
+                      <option value="">Sélectionner</option>
+                      {selectOptions.map((symbol) => (
+                        <option key={`${symbol}-${index}`} value={symbol}>
+                          {symbol} • {getTokenConfig(symbol)?.name || 'Hyperliquid'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Côté</label>
+                    <select
+                      value={order.side}
+                      onChange={(e) => updateOrderField(index, 'side', e.target.value)}
+                      style={{
+                        width: '100%',
+                        marginTop: '4px',
+                        borderRadius: '10px',
+                        padding: '10px',
+                        background: '#0f172a',
+                        color: '#e5e7eb',
+                        border: '1px solid #1e293b'
+                      }}
+                    >
+                      <option value="buy">Achat (Long)</option>
+                      <option value="sell">Vente (Short)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.00001"
+                      value={order.size}
+                      onChange={(e) => updateOrderField(index, 'size', e.target.value)}
+                      placeholder="0.01"
+                      style={{
+                        width: '100%',
+                        marginTop: '4px',
+                        borderRadius: '10px',
+                        padding: '10px',
+                        background: '#0f172a',
+                        color: '#e5e7eb',
+                        border: '1px solid #1e293b'
+                      }}
+                    />
+                    <small style={{ color: '#475569' }}>Exprimé en unités de token</small>
+                  </div>
+                  <div>
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDC)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={order.price}
+                      onChange={(e) => updateOrderField(index, 'price', e.target.value)}
+                      placeholder="87000"
+                      style={{
+                        width: '100%',
+                        marginTop: '4px',
+                        borderRadius: '10px',
+                        padding: '10px',
+                        background: '#0f172a',
+                        color: '#e5e7eb',
+                        border: '1px solid #1e293b'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <button
+              onClick={addOrderForm}
+              disabled={orderForms.length >= 10}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid #334155',
+                background: orderForms.length >= 10 ? '#1e293b' : '#0f172a',
+                color: '#e5e7eb',
+                cursor: orderForms.length >= 10 ? 'not-allowed' : 'pointer'
+              }}
+            >
+              + Ajouter un ordre
+            </button>
+            <button
+              onClick={resetOrderForms}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid #1e293b',
+                background: '#1e293b',
+                color: '#e5e7eb'
+              }}
+            >
+              Réinitialiser BTC / ETH
+            </button>
+          </div>
         </div>
 
         {orderStatus.state !== 'idle' && (
