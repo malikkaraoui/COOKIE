@@ -1,6 +1,7 @@
 const PROD_FUNCTIONS_BASE_URL =
   "https://us-central1-cookie1-b3592.cloudfunctions.net"
 const PLACE_TEST_ORDER_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/placeTestOrder`
+const LIST_OPEN_ORDERS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/listOpenOrders`
 
 function normalizeOrderPayload(payload) {
   if (typeof payload !== 'object' || payload === null) {
@@ -70,6 +71,39 @@ export async function placeHyperliquidTestOrder(payload) {
   if (!response.ok) {
     const message = parsed?.error || parsed?.message || response.statusText
     throw new Error(`Erreur backend (${response.status}): ${message}`)
+  }
+
+  return parsed
+}
+
+export async function fetchHyperliquidOpenOrders() {
+  let response
+  try {
+    response = await fetch(LIST_OPEN_ORDERS_ENDPOINT)
+  } catch (networkError) {
+    throw new Error(
+      `Impossible de contacter listOpenOrders (${LIST_OPEN_ORDERS_ENDPOINT}). ` +
+        'Assure-toi que la nouvelle fonction Firebase est déployée ou que l’URL est accessible. ' +
+        `Détails: ${networkError.message}`
+    )
+  }
+
+  const rawText = await response.text()
+  let parsed
+
+  try {
+    parsed = rawText ? JSON.parse(rawText) : null
+  } catch (error) {
+    throw new Error(`Réponse invalide de listOpenOrders: ${rawText} (${error.message})`)
+  }
+
+  if (!response.ok) {
+    const message = parsed?.error || parsed?.message || response.statusText
+    throw new Error(`Erreur backend (${response.status}): ${message}`)
+  }
+
+  if (!parsed?.openOrders) {
+    throw new Error('Réponse inattendue: openOrders manquant')
   }
 
   return parsed

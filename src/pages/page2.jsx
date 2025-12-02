@@ -14,7 +14,11 @@ import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../context/MarketDataContext'
 import { getTokenConfig } from '../config/tokenList'
-import { placeHyperliquidTestOrder, DEFAULT_TEST_ORDER } from '../lib/hyperliquidOrders'
+import { 
+  placeHyperliquidTestOrder, 
+  fetchHyperliquidOpenOrders,
+  DEFAULT_TEST_ORDER 
+} from '../lib/hyperliquidOrders'
 import { 
   getInitialCapital, 
   saveInitialCapital, 
@@ -59,6 +63,7 @@ function DeleteButton({ symbol, onRemove, isMobile }) {
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
+  const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
 
   // Détection mobile
   useEffect(() => {
@@ -236,12 +241,43 @@ export default function Page2() {
     }
   }
 
-  const orderStatusColor = {
+  const loadOpenOrders = async () => {
+    setOpenOrdersStatus({ state: 'loading', message: 'Récupération des ordres ouverts Hyperliquid…', payload: null })
+    try {
+      const response = await fetchHyperliquidOpenOrders()
+      const count = response.openOrders?.length ?? 0
+      setOpenOrdersStatus({
+        state: 'success',
+        message: count === 0 ? 'Aucun ordre ouvert.' : `${count} ordre(s) ouverts en file` ,
+        payload: response
+      })
+    } catch (error) {
+      setOpenOrdersStatus({ state: 'error', message: error.message, payload: null })
+    }
+  }
+
+  const statusColorMap = {
     idle: '#94a3b8',
     loading: '#fbbf24',
     success: '#22c55e',
     error: '#f87171'
-  }[orderStatus.state]
+  }
+
+  const orderStatusColor = statusColorMap[orderStatus.state]
+  const openOrdersStatusColor = statusColorMap[openOrdersStatus.state]
+  const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
+
+  const formatNumericString = (value, maximumFractionDigits = 4) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return value ?? '—'
+    return numeric.toLocaleString('fr-FR', { maximumFractionDigits })
+  }
+
+  const formatTimestamp = (value) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return '—'
+    return new Date(numeric).toLocaleString('fr-FR', { hour12: false })
+  }
 
   return (
     <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -325,6 +361,116 @@ export default function Page2() {
               >
                 {JSON.stringify(orderStatus.payload, null, 2)}
               </pre>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Liste des ordres ouverts Hyperliquid */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
+          borderRadius: '16px',
+          padding: '24px',
+          marginBottom: '24px',
+          border: '1px solid #1e293b'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
+              📋 Lister mes ordres ouverts
+            </h3>
+            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
+              Vérifie en direct ce que Hyperliquid retient encore en carnet pour le compte API.
+            </p>
+          </div>
+          <button
+            onClick={loadOpenOrders}
+            disabled={openOrdersStatus.state === 'loading'}
+            style={{
+              padding: '12px 20px',
+              borderRadius: '10px',
+              border: 'none',
+              background: openOrdersStatus.state === 'loading' ? '#475569' : '#6366f1',
+              color: 'white',
+              fontWeight: '600',
+              cursor: openOrdersStatus.state === 'loading' ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s'
+            }}
+          >
+            {openOrdersStatus.state === 'loading' ? 'Chargement…' : 'Lister mes ordres ouverts'}
+          </button>
+        </div>
+
+        {openOrdersStatus.state !== 'idle' && (
+          <div style={{ marginTop: '16px' }}>
+            <p style={{ color: openOrdersStatusColor, fontSize: '14px', marginBottom: '8px' }}>
+              {openOrdersStatus.message}
+            </p>
+            {openOrdersStatus.payload && (
+              openOrdersList.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {openOrdersList.map((order) => (
+                    <div
+                      key={order.oid}
+                      style={{
+                        background: '#020617',
+                        border: '1px solid #1e293b',
+                        borderRadius: '12px',
+                        padding: '16px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <span style={{ color: '#f8fafc', fontWeight: '600' }}>{order.coin}</span>
+                        <span
+                          style={{
+                            color: order.side === 'buy' ? '#22c55e' : '#f87171',
+                            fontWeight: '600'
+                          }}
+                        >
+                          {order.side === 'buy' ? 'Long (achat)' : 'Short (vente)'}
+                        </span>
+                      </div>
+                      <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
+                        <div>
+                          Prix limite : <strong>{formatNumericString(order.limitPx, 2)} USDC</strong>
+                        </div>
+                        <div>
+                          Taille restante : <strong>{formatNumericString(order.size, 5)}</strong> (initiale {formatNumericString(order.origSz, 5)})
+                        </div>
+                        <div>
+                          Timestamp : <strong>{formatTimestamp(order.timestamp)}</strong>
+                        </div>
+                        <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
+                          OID #{order.oid} {order.reduceOnly ? '• Reduce only' : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    background: '#020617',
+                    border: '1px dashed #1e293b',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    color: '#cbd5f5',
+                    fontSize: '13px'
+                  }}
+                >
+                  Aucun ordre ouvert sur ce compte Hyperliquid.
+                </div>
+              )
             )}
           </div>
         )}

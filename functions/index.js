@@ -99,6 +99,7 @@ require("ts-node").register({
   project: require("path").join(__dirname, "tsconfig.json"),
 });
 
-const { placeTestOrder } = require("./src/index");
+const { placeTestOrder, listOpenOrders } = require("./src/index");
 
 exports.placeTestOrder = placeTestOrder;
+exports.listOpenOrders = listOpenOrders;

@@ -31,7 +31,9 @@ export const exchangeClient = new hl.ExchangeClient({
   isTestnet: true,
 });
 
+export const hyperliquidAccountAddress = accountAddress;
+
 // Optionnel : petite util pour debug
 export async function getAccountSummary() {
-  return infoClient.allMarginSummary(accountAddress);
+  return infoClient.clearinghouseState({ user: accountAddress });
 }
