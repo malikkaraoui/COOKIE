@@ -28,7 +28,6 @@ export const infoClient = new hl.InfoClient({ transport });
 export const exchangeClient = new hl.ExchangeClient({
   wallet,
   transport,
-  isTestnet: true,
 });
 
 export const hyperliquidAccountAddress = accountAddress;

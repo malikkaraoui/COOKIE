@@ -3,7 +3,7 @@
 // Synchronisation Firebase pour utilisateurs authentifiés, localStorage sinon
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights } from '../lib/database/userService'
+import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights, getPortfolioWeights } from '../lib/database/userService'
 import { migrateSelectedTokens } from '../lib/database/migrateSelectedTokens'
 import { normalizeHyperliquidSymbol } from '../config/tokenList'
 
@@ -153,7 +153,6 @@ export function SelectedTokensProvider({ children }) {
     if (user?.uid) {
       try {
         // Récupérer les poids actuels depuis Firebase
-        const { getPortfolioWeights } = await import('../lib/database/userService')
         const currentWeights = await getPortfolioWeights(user.uid)
         
         if (currentWeights) {

@@ -7,5 +7,27 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  // Plus besoin de envDir, tout est en dur dans firebase.js
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('firebase')) {
+              return 'firebase'
+            }
+            if (id.includes('@nktkas/hyperliquid')) {
+              return 'hyperliquid'
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons'
+            }
+            if (id.includes('react') || id.includes('scheduler')) {
+              return 'react-vendor'
+            }
+          }
+        }
+      }
+    }
+  }
 })
