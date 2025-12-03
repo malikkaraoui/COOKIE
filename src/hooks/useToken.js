@@ -1,6 +1,6 @@
 // Hook pour accéder aux données d'un token spécifique
 // Utilise MarketDataContext pour récupérer prix, variation, statut
-import { useMarketData } from '../context/MarketDataContext'
+import { useMarketData } from '../providers/MarketDataProvider'
 import { getTokenConfig } from '../config/tokenList'
 
 export function useToken(symbol) {

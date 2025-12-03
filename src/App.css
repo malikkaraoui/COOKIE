@@ -117,6 +117,20 @@ body {
   flex-shrink: 0; /* Ne se compresse jamais */
 }
 
+.sidebar-footer-fixed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-version {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+}
+
 /* liens de navigation */
 .nav-link {
   display: flex;
@@ -175,6 +189,114 @@ body {
 
 .nav-link--compact {
   justify-content: center;
+}
+
+/* Auth modal overlay */
+.auth-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 16px;
+}
+
+.auth-modal {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  color: #2f2434;
+  border-radius: 20px;
+  padding: 28px 28px 24px;
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.25);
+}
+
+.auth-modal-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #3d2d45;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.auth-modal-close:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.auth-modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-modal-content h3 {
+  font-size: 1.25rem;
+  margin-bottom: 4px;
+}
+
+.auth-modal-content p {
+  font-size: 0.95rem;
+  color: #5c4a61;
+}
+
+.auth-modal-error {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
+
+.auth-modal-primary,
+.auth-modal-secondary {
+  border: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-modal-primary {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(34, 197, 94, 0.35);
+}
+
+.auth-modal-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.auth-modal-secondary {
+  background: transparent;
+  color: #6f5a72;
+}
+
+.auth-modal-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-modal-primary:not(:disabled):hover,
+.auth-modal-secondary:hover {
+  transform: translateY(-1px);
 }
 
 /* poignée verticale entre nav et page */

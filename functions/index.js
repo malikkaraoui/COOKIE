@@ -92,3 +92,15 @@ exports.createCheckoutSession = onCall(
 
 // Brancher le webhook Stripe (gestion événements serveur à serveur)
 exports.handleStripeWebhook = require("./stripeWebhooks").handleStripeWebhook;
+
+// Chargement dynamique des fonctions TypeScript Hyperliquid
+require("ts-node").register({
+  transpileOnly: true,
+  project: require("path").join(__dirname, "tsconfig.json"),
+});
+
+const { placeTestOrder, listOpenOrders, closeAllPositions } = require("./src/index");
+
+exports.placeTestOrder = placeTestOrder;
+exports.listOpenOrders = listOpenOrders;
+exports.closeAllPositions = closeAllPositions;

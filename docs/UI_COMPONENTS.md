@@ -2,6 +2,28 @@
 
 ## 🎯 Hooks interactifs
 
+## ⚠️ Hyperliquid – Formulaire d’ordres (Ma Cuisine)
+
+- Composant : `src/pages/page2.jsx`
+- Helpers clefs : `computeAutoSize`, `quantizeSize`, `TOKEN_SIZE_DECIMALS`
+
+### Règle à ne jamais oublier
+
+Chaque token Hyperliquid impose un nombre de décimales maximum pour la taille (`szDecimals` retourné par `POST /info` → `meta`).
+
+> 🔴 **Si tu ajoutes un nouveau token Hyperliquid dans `tokenList.js`, tu dois aussi l’ajouter dans `TOKEN_SIZE_DECIMALS` avec son `szDecimals`.**
+
+Sinon, la taille auto/manuel sera rejetée par Hyperliquid (`Order has invalid size`).
+
+### Procédure rapide
+
+1. Récupérer la valeur `szDecimals` via `scripts/update-hyperliquid-tokens.js` ou un curl `POST /info {"type":"meta"}`.
+2. Ajouter/mettre à jour l’entrée correspondante dans `TOKEN_SIZE_DECIMALS` (fallback = 4 mais à éviter).
+3. Vérifier que `computeAutoSize` renvoie une taille ≥ 15 USDC puis arrondit avec `quantizeSize(symbol, rawSize, 'ceil')`.
+4. Lancer `npm run lint` et tester un ordre sur Hyperliquid pour confirmer.
+
+> 🧠 Astuce : si un token change de précision côté Hyperliquid, mettre la table à jour avant toute modification du frontend pour éviter les 500.
+
 ### `useHover` Hook
 
 Hook simple pour détecter le survol d'un élément.

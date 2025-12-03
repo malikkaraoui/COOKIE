@@ -154,6 +154,17 @@ npm run dev
 - ✅ `.env.development` (testnet)
 - ❌ Pas de `.env.local` nécessaire
 
+### Variables spécifiques Hyperliquid Functions
+
+Pour piloter l’endpoint utilisé par le bouton d’ordre test :
+
+| Variable | Effet | Exemple |
+|----------|-------|---------|
+| `VITE_USE_FUNCTIONS_EMULATOR` | Quand `true`, force le front à contacter l’émulateur Firebase local (http://127.0.0.1:5005/…). Valeur par défaut : `false`. | `VITE_USE_FUNCTIONS_EMULATOR=true` |
+| `VITE_FUNCTIONS_BASE_URL` | URL complète (sans `/placeTestOrder`) à utiliser si vous voulez cibler une instance spécifique (staging/prod). Prioritaire sur tout le reste. | `VITE_FUNCTIONS_BASE_URL=https://us-central1-cookie1-b3592.cloudfunctions.net` |
+
+> ⚠️ Si aucune variable n’est définie, le front utilisera directement la fonction déployée (cloud) pour éviter les erreurs quand l’émulateur n’est pas lancé.
+
 ---
 
 ### Cas 2 : Tests Locaux avec Clés Différentes

@@ -1,100 +1,66 @@
-# 🧭 Routing COOKIE - Convention de Nommage
+````markdown
+# 🧭 Routing COOKIE – état réel (décembre 2025)
 
-## 📋 URLs Actuelles
+Ce document reflète **les routes réellement déclarées** dans `src/components/AppLayout.jsx`. Mise à jour Étape D : toutes les URLs produit passent en kebab-case, avec redirections automatiques depuis les anciennes versions PascalCase.
 
-| URL | Fichier | Description |
-|-----|---------|-------------|
-| `/` | - | Redirection vers `/MarmitonCommunautaire` |
-| `/MarmitonCommunautaire` | `page1.jsx` | Liste complète des tokens Hyperliquid (draggable) |
-| `/MaCuisine` | `page2.jsx` | Tokens sélectionnés par l'utilisateur (max 4) |
-| `/BinanceToken` | `page4.jsx` | Liste des tokens depuis Binance Spot API |
-| `/profile` | `ProfilePage.jsx` | Profil utilisateur (Google Auth) |
+## 📋 Table de vérité (kebab-case)
 
----
+| URL | Composant React | Description | Notes |
+|-----|-----------------|-------------|-------|
+| `/` | – | Redirige immédiatement vers `/epicerie-fine` | `Navigate to="/epicerie-fine"` |
+| `/epicerie-fine` | `pages/page1.jsx` | Vue principale « Épicerie fine » (sélection & drag Hyperliquid) | Accent retiré pour compatibilité URL |
+| `/ma-cuisine` | `pages/page2.jsx` | Formulaire de construction d’ordre Hyperliquid | Drop zone principale |
+| `/la-marmite` | `pages/LaMarmite.jsx` | Page communautaire (votes/recettes) | Contenu social |
+| `/profile` | `pages/ProfilePage.jsx` | Profil utilisateur Google | Déjà en kebab-case |
+| `/stripe` | `pages/StripePage.jsx` | Lancement du checkout Stripe Premium | Réservé users loggés |
+| `/stripe-success` | `pages/StripeSuccessPage.jsx` | Callback Stripe succès | Invariant (Stripe docs) |
+| `/stripe-cancel` | `pages/StripeCancelPage.jsx` | Callback Stripe annulation | Invariant |
 
-## ✅ Convention de Nommage
+> ✅ Aucune autre `Route` n’est montée côté client pour l’instant.
 
-### Règle Générale
-**Les URLs doivent être en PascalCase et décrire clairement la fonctionnalité**
+## 🔁 Compatibilité ascendante
 
-### Exemples
-- ✅ `/MarmitonCommunautaire` - Clair et descriptif
-- ✅ `/MaCuisine` - Français, correspond au label sidebar
-- ✅ `/BinanceToken` - Indique la source des données
-- ❌ `/page1`, `/page2` - Trop générique, pas explicite
-- ❌ `/marmiton-communautaire` - kebab-case (réservé pour les paramètres)
-- ❌ `/marmiton_communautaire` - snake_case (éviter)
+Les anciennes URLs restent fonctionnelles grâce à des `<Navigate replace />` dans `AppLayout` :
 
-### Format
-```
-/[Nom]Descriptif[Source]
-```
+| Ancienne URL | Nouvelle cible |
+|--------------|----------------|
+| `/ÉpicerieFine` | `/epicerie-fine` |
+| `/MaCuisine` | `/ma-cuisine` |
+| `/LaMarmite` | `/la-marmite` |
+| `/Stripe` | `/stripe` |
+| `/StripeSuccess` | `/stripe-success` |
+| `/StripeCancel` | `/stripe-cancel` |
+| `/Profile` | `/profile` |
 
-**Exemples :**
-- `/MarmitonCommunautaire` → Nom de la page
-- `/BinanceToken` → Source Binance + type Token
-- `/HyperliquidOrderBook` → Source Hyperliquid + fonctionnalité
+Ces redirects couvrent les deep-links partagés avant Étape D et évitent de casser les callbacks Stripe déjà configurés.
 
----
+## ✅ Convention cible
 
-## 🚀 Ajouter une Nouvelle Route
+- **kebab-case ASCII** pour toutes les URLs exposées (y compris les écrans principaux).
+- **Redirections systématiques** lors d’un renommage (React Router + Firebase Hosting si nécessaire).
+- **Documentation immédiatement alignée** (ce fichier + CHANGELOG) pour toute modification future.
 
-### 1. Créer la page
-```bash
-src/pages/MaNouvellePage.jsx
-```
+## 🗓️ Historique rapide
 
-### 2. Définir l'URL
-```
-URL : /MaNouvellePage
-```
+- **23 nov. 2025** : `/page1` → `/MarmitonCommunautaire`, `/page2` → `/MaCuisine`, `/page4` → `/BinanceToken`, redirection `/` → `/MarmitonCommunautaire`.
+- **3 déc. 2025 (Étape D)** : passage généralisé en kebab-case (`/epicerie-fine`, `/ma-cuisine`, `/la-marmite`, `/stripe`). Ajout des redirections rétro-compatibles ci-dessus.
 
-### 3. Modifier AppLayout.jsx
-```jsx
-import MaNouvellePage from '../pages/MaNouvellePage'
+## ✅ Bonnes pratiques
 
-// Dans <Routes>
-<Route path="/MaNouvellePage" element={<MaNouvellePage />} />
-```
+1. **Aligner route & wording Sidebar** (même intitulé visuel que l’URL). Les liens ont été mis à jour en même temps que les Routes.
+2. **Documenter toute nouvelle route** dans la table principale dès son ajout à `AppLayout.jsx`.
+3. **Prévoir des redirections** (React Router + Hosting) avant de renommer une URL déjà utilisée par les utilisateurs ou par Stripe.
+4. **Notifier l’équipe** (Slack + CHANGELOG) lors d’un changement visible, en rappelant les impacts deep-link/Stripe.
 
-### 4. Ajouter au Sidebar (optionnel)
-```jsx
-const links = [
-  // ...
-  { to: '/MaNouvellePage', label: 'Ma Nouvelle Page' },
-]
-```
+## 🔮 Routes futures (planifiées)
 
----
+| Route envisagée | Statut | Commentaire |
+|-----------------|--------|-------------|
+| `/hyperliquid-order-book` | À définir | Carnet d’ordres BTC/ETH basé sur Hyperliquid. |
+| `/portefeuille-on-chain` | En veille | Dépend de l’intégration NOWNodes. |
+| `/parametres` | Idée | Page settings (capital initial, préférences). |
+| `/statistiques` | Idée | Vue analytique (perf, corrélations). |
 
-## 📖 Historique des Changements
+> Lorsqu’une de ces routes devient réelle, l’ajouter à la table principale + décrire la migration éventuelle depuis les anciennes URLs.
 
-### 23 novembre 2025
-- ✅ `/page1` → `/MarmitonCommunautaire`
-- ✅ `/page2` → `/MaCuisine`
-- ✅ `/page4` → `/BinanceToken`
-- ✅ Redirection racine `/` vers `/MarmitonCommunautaire`
-
-### Raison
-- URLs génériques (`/page1`, `/page2`) pas claires pour les nouveaux développeurs
-- Convention PascalCase cohérente avec les noms de composants React
-- Facilite la compréhension immédiate de la structure de l'app
-
----
-
-## 🎯 Bonnes Pratiques
-
-1. **Toujours utiliser PascalCase** pour les URLs
-2. **Décrire la fonctionnalité** dans l'URL (pas de noms génériques)
-3. **Synchroniser avec le label Sidebar** (même wording)
-4. **Documenter les changements** dans ce fichier
-5. **Tester les redirections** après modification
-
----
-
-## 🔮 Routes Futures (Planifiées)
-
-- `/HyperliquidOrderBook` - Carnet d'ordres BTC
-- `/PortefeuilleOnChain` - Vue des balances blockchain
-- `/Parametres` - Configuration utilisateur
-- `/Statistiques` - Analytics des prix
+````

@@ -9,7 +9,10 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { INFO_URL } from '../lib/hlEndpoints'
 import { calculatePriceChange } from '../lib/priceCalculations'
-import { setCachedPrice } from '../lib/database/priceCache'
+import { setCachedPriceHyper } from '../lib/database/priceCache'
+import { getHyperliquidTokenSymbols } from '../config/tokenList'
+import { ref, onValue } from 'firebase/database'
+import { db } from '../config/firebase'
 
 const MarketDataContext = createContext(null)
 
@@ -68,39 +71,43 @@ export function MarketDataProvider({ children }) {
   // Polling assetCtxs toutes les 5s (prix + prevDayPx en une seule requête)
   useEffect(() => {
     async function fetchAssetCtxs() {
+      const symbols = getHyperliquidTokenSymbols() // Uniquement tokens Hyperliquid
+      
       try {
         const res = await fetch(INFO_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type: 'assetCtxs', coins: ['BTC'] })
+          body: JSON.stringify({ type: 'assetCtxs', coins: symbols })
         })
         if (!res.ok) throw new Error('HTTP ' + res.status)
         const data = await res.json()
         
-        if (Array.isArray(data) && data[0]) {
-          const btcData = data[0]
-          const markPx = Number(btcData.markPx)
-          const prevDayPx = Number(btcData.prevDayPx)
-          
-          if (!isNaN(markPx) && !isNaN(prevDayPx) && prevDayPx > 0) {
-            console.log('✅ assetCtxs BTC:', { markPx, prevDayPx })
-            updateToken('BTC', { 
-              price: markPx, 
-              prevDayPx,
-              source: 'live',
-              status: 'live'
-            })
-          } else {
-            console.warn('⚠️ Données assetCtxs invalides:', btcData)
-            updateToken('BTC', { status: 'error', error: 'Données invalides' })
-          }
+        if (Array.isArray(data)) {
+          data.forEach((tokenData, index) => {
+            const symbol = symbols[index]
+            const markPx = Number(tokenData.markPx)
+            const prevDayPx = Number(tokenData.prevDayPx)
+            
+            if (!isNaN(markPx) && !isNaN(prevDayPx) && prevDayPx > 0) {
+              console.log(`✅ assetCtxs ${symbol}:`, { markPx, prevDayPx })
+              updateToken(symbol, { 
+                price: markPx, 
+                prevDayPx,
+                source: 'hyperliquid',
+                status: 'live'
+              })
+            } else {
+              console.warn(`⚠️ Données assetCtxs invalides pour ${symbol}:`, tokenData)
+              updateToken(symbol, { status: 'error', error: 'Données invalides' })
+            }
+          })
         } else {
           console.warn('⚠️ Format assetCtxs inattendu:', data)
-          updateToken('BTC', { status: 'error', error: 'Format inattendu' })
+          symbols.forEach(sym => updateToken(sym, { status: 'error', error: 'Format inattendu' }))
         }
       } catch (e) {
         console.warn('❌ Erreur fetch assetCtxs:', e.message)
-        updateToken('BTC', { status: 'error', error: e.message })
+        symbols.forEach(sym => updateToken(sym, { status: 'error', error: e.message }))
       }
     }
 
@@ -113,6 +120,43 @@ export function MarketDataProvider({ children }) {
     return () => {
       clearInterval(pollTimer)
     }
+  }, [])
+
+  // Listener temps réel pour les tokens Binance depuis Firebase
+  useEffect(() => {
+    const binanceRef = ref(db, 'priceTokenBinance')
+    
+    const unsubscribe = onValue(binanceRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const binanceData = snapshot.val()
+        
+        // Pour chaque token Binance dans Firebase
+        Object.keys(binanceData).forEach(symbol => {
+          const tokenData = binanceData[symbol]
+          
+          if (tokenData && tokenData.price != null) {
+            console.log(`📊 Firebase Binance ${symbol}:`, {
+              price: tokenData.price,
+              deltaPct: tokenData.deltaPct
+            })
+            
+            // Mettre à jour dans notre state local
+            updateToken(symbol, {
+              price: tokenData.price,
+              prevDayPx: tokenData.prevDayPx,
+              deltaAbs: tokenData.deltaAbs,
+              deltaPct: tokenData.deltaPct,
+              source: 'binance',
+              status: 'live'
+            })
+          }
+        })
+      }
+    }, (error) => {
+      console.error('❌ Erreur listener Binance Firebase:', error)
+    })
+
+    return () => unsubscribe()
   }, [])
 
   // Fonction utilitaire de mise à jour atomique
@@ -132,14 +176,25 @@ export function MarketDataProvider({ children }) {
       }
       merged.updatedAt = Date.now()
 
-      // Écriture Realtime DB (async, best effort) uniquement si source live
-      if (merged.source === 'live' && merged.price != null && merged.prevDayPx != null) {
-        setCachedPrice(symbol, {
+      // Écriture Realtime DB UNIQUEMENT pour Hyperliquid
+      // (Binance est déjà écrit par useBinancePrices)
+      if (merged.source === 'hyperliquid' && merged.price != null && merged.prevDayPx != null) {
+        console.log(`🔥 Tentative écriture Firebase Hyperliquid ${symbol}:`, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,
           deltaAbs: merged.deltaAbs,
           deltaPct: merged.deltaPct
-        }).catch(() => {})
+        })
+        setCachedPriceHyper(symbol, {
+          price: merged.price,
+          prevDayPx: merged.prevDayPx,
+          deltaAbs: merged.deltaAbs,
+          deltaPct: merged.deltaPct
+        }).then(() => {
+          console.log(`✅ Écriture Firebase Hyperliquid ${symbol} réussie!`)
+        }).catch((err) => {
+          console.error(`❌ Échec écriture Firebase Hyperliquid ${symbol}:`, err.code, err.message)
+        })
       }
       return { ...prev, [symbol]: merged }
     })
@@ -156,7 +211,7 @@ export function MarketDataProvider({ children }) {
     </MarketDataContext.Provider>
   )
 }
-
+// eslint-disable-next-line react-refresh/only-export-components
 export function useMarketData() {
   const ctx = useContext(MarketDataContext)
   if (!ctx) throw new Error('useMarketData doit être utilisé dans MarketDataProvider')

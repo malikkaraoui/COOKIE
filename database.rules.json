@@ -13,12 +13,14 @@
       }
     },
     "priceTokenHyper": {
+      ".read": true,
       "$coin": {
         ".read": true,
         ".write": true
       }
     },
     "priceTokenBinance": {
+      ".read": true,
       "$coin": {
         ".read": true,
         ".write": true
