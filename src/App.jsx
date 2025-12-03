@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import './App.css'
 import AppLayout from './components/AppLayout'
-import { MarketDataProvider } from './context/MarketDataContext'
+import { MarketDataProvider } from './providers/MarketDataProvider'
 import { SelectedTokensProvider } from './context/SelectedTokensContext'
 import { initializePriceNodes } from './lib/database/initFirebase'
 import { cleanupOldPriceCache } from './lib/database/cleanupFirebase'
