@@ -94,7 +94,8 @@ export function MarketDataProvider({ children }) {
                 price: markPx, 
                 prevDayPx,
                 source: 'hyperliquid',
-                status: 'live'
+                status: 'live',
+                error: null
               })
             } else {
               console.warn(`⚠️ Données assetCtxs invalides pour ${symbol}:`, tokenData)

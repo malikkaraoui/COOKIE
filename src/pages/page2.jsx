@@ -108,6 +108,26 @@ const trimTrailingZeros = (value) => {
   return trimmed
 }
 
+const countDecimalPlaces = (value) => {
+  if (value == null || value === '') {
+    return 0
+  }
+  const normalized = toCanonicalDecimalString(value)
+  const parts = normalized.split('.')
+  if (parts.length !== 2) {
+    return 0
+  }
+  return parts[1].length
+}
+
+const derivePricePrecision = (value, fallback = PRICE_NUDGE_DECIMALS) => {
+  const decimals = countDecimalPlaces(value)
+  if (decimals > 0) {
+    return Math.min(decimals, PRICE_DISPLAY_FRACTION_DIGITS)
+  }
+  return fallback
+}
+
 const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
 
 const DECIMAL_INPUT_REGEX = /^\d*(?:[,.]\d*)?$/u
@@ -203,10 +223,23 @@ const getPriceDecimals = (symbol) => {
   return PRICE_DISPLAY_FRACTION_DIGITS
 }
 
-const getPriceStepValue = (symbol) => {
+const getPriceStepValue = (symbol, currentValue, precisionHint) => {
   const constraint = getPriceConstraint(symbol)
   if (constraint?.tick) {
     return constraint.tick
+  }
+  const decimalsFromValue = countDecimalPlaces(currentValue)
+  if ((precisionHint ?? 0) > decimalsFromValue && precisionHint != null) {
+    const safeDecimals = Math.min(precisionHint, PRICE_DISPLAY_FRACTION_DIGITS)
+    return 1 / (10 ** safeDecimals)
+  }
+  if (decimalsFromValue > 0) {
+    const safeDecimals = Math.min(decimalsFromValue, PRICE_DISPLAY_FRACTION_DIGITS)
+    return 1 / (10 ** safeDecimals)
+  }
+  const numericValue = Number(toCanonicalDecimalString(currentValue))
+  if (Number.isFinite(numericValue) && numericValue > 0) {
+    return 1
   }
   return PRICE_NUDGE_STEP
 }
@@ -219,7 +252,8 @@ const clampDecimalsForValue = (numericValue, decimals) => {
     return Math.max(0, decimals)
   }
   if (Math.abs(numericValue) >= 1) {
-    return Math.max(0, Math.min(decimals, 2))
+    const maxDecimals = Math.max(PRICE_NUDGE_DECIMALS, 2)
+    return Math.max(0, Math.min(decimals, maxDecimals))
   }
   return Math.max(0, decimals)
 }
@@ -253,7 +287,8 @@ function createBlankOrder(symbol = '') {
     size: toDisplayDecimalString(DEFAULT_ORDER_SIZE),
     price: '',
     autoPrice: true,
-    autoSize: true
+    autoSize: true,
+    pricePrecision: PRICE_NUDGE_DECIMALS
   }
 }
 
@@ -509,17 +544,21 @@ export default function Page2() {
               ...order,
               symbol: '',
               price: '',
+              pricePrecision: PRICE_NUDGE_DECIMALS,
               autoPrice: true,
               size: DEFAULT_ORDER_SIZE,
               autoSize: true
             }
           }
+          const autoPrice = computeAutoLimitPrice(canonical) || ''
+          const autoSize = toDisplayDecimalString(computeAutoSize(canonical))
           return {
             ...order,
             symbol: canonical,
-            price: computeAutoLimitPrice(canonical) || '',
+            price: autoPrice,
+            pricePrecision: derivePricePrecision(autoPrice),
             autoPrice: true,
-            size: toDisplayDecimalString(computeAutoSize(canonical)),
+            size: autoSize,
             autoSize: true
           }
         }
@@ -535,11 +574,18 @@ export default function Page2() {
           }
         }
         if (field === 'price') {
-          const processedPrice = quantizePrice(order.symbol, value) || value
+          const normalized = normalizeDecimalInput(value)
+          if (!isValidDecimalInput(normalized)) {
+            return order
+          }
+          const nextPrecision = normalized
+            ? Math.max(derivePricePrecision(normalized), order.pricePrecision ?? PRICE_NUDGE_DECIMALS)
+            : order.pricePrecision ?? PRICE_NUDGE_DECIMALS
           return {
             ...order,
-            price: processedPrice,
-            autoPrice: false
+            price: normalized,
+            autoPrice: false,
+            pricePrecision: nextPrecision
           }
         }
         return { ...order, [field]: value }
@@ -556,13 +602,16 @@ export default function Page2() {
         return prev
       }
       const fallbackSymbol = orderableSymbols[(prev.length) % orderableSymbols.length] || orderableSymbols[0]
+      const autoPrice = computeAutoLimitPrice(fallbackSymbol) || ''
+      const autoSize = toDisplayDecimalString(computeAutoSize(fallbackSymbol))
       return [
         ...prev,
         {
           ...createBlankOrder(fallbackSymbol),
           symbol: fallbackSymbol,
-          price: computeAutoLimitPrice(fallbackSymbol) || '',
-          size: toDisplayDecimalString(computeAutoSize(fallbackSymbol)),
+          price: autoPrice,
+          pricePrecision: derivePricePrecision(autoPrice),
+          size: autoSize,
           autoPrice: true,
           autoSize: true
         }
@@ -584,14 +633,19 @@ export default function Page2() {
       setOrderForms([createBlankOrder()])
       return
     }
-    const defaults = orderableSymbols.slice(0, 2).map((symbol) => ({
-      ...createBlankOrder(symbol),
-      symbol,
-      price: computeAutoLimitPrice(symbol) || '',
-      size: toDisplayDecimalString(computeAutoSize(symbol)),
-      autoPrice: true,
-      autoSize: true
-    }))
+    const defaults = orderableSymbols.slice(0, 2).map((symbol) => {
+      const autoPrice = computeAutoLimitPrice(symbol) || ''
+      const autoSize = toDisplayDecimalString(computeAutoSize(symbol))
+      return {
+        ...createBlankOrder(symbol),
+        symbol,
+        price: autoPrice,
+        pricePrecision: derivePricePrecision(autoPrice),
+        size: autoSize,
+        autoPrice: true,
+        autoSize: true
+      }
+    })
     if (defaults.length === 0) {
       setOrderForms([createBlankOrder(orderableSymbols[0])])
       return
@@ -622,6 +676,36 @@ export default function Page2() {
     )
   }, [findCanonicalSymbol])
 
+  const finalizeManualPrice = useCallback((index) => {
+    setOrderForms((prev) =>
+      prev.map((order, currentIndex) => {
+        if (currentIndex !== index) {
+          return order
+        }
+        if (order.autoPrice) {
+          return order
+        }
+        const canonical = findCanonicalSymbol(order.symbol)
+        if (!canonical) {
+          return order
+        }
+        const numericValue = parseDecimalValue(order.price)
+        if (!Number.isFinite(numericValue) || numericValue <= 0) {
+          return { ...order, price: '' }
+        }
+        const processed = quantizePrice(canonical, numericValue)
+        if (!processed) {
+          return { ...order, price: '' }
+        }
+        const precision = Math.max(
+          derivePricePrecision(processed),
+          order.pricePrecision ?? PRICE_NUDGE_DECIMALS
+        )
+        return { ...order, price: processed, pricePrecision: precision }
+      })
+    )
+  }, [findCanonicalSymbol])
+
   const stopContinuousNudge = useCallback(() => {
     if (priceNudgeIntervalRef.current) {
       clearInterval(priceNudgeIntervalRef.current)
@@ -642,20 +726,25 @@ export default function Page2() {
         if (!canonical) {
           return order
         }
-        const step = getPriceStepValue(canonical)
         const currentValue = order.autoPrice
           ? computeAutoLimitPrice(canonical)
           : order.price
+        const step = getPriceStepValue(canonical, currentValue, order.pricePrecision)
         const numeric = Number(currentValue)
         const base = Number.isFinite(numeric) && numeric > 0 ? numeric : step
         const next = base + step * (direction > 0 ? 1 : -1)
         const safeNext = next > 0 ? next : step
         const quantized = quantizePrice(canonical, safeNext) || safeNext.toString()
+        const updatedPrecision = Math.max(
+          derivePricePrecision(quantized),
+          order.pricePrecision ?? PRICE_NUDGE_DECIMALS
+        )
         return {
           ...order,
           symbol: canonical,
           price: quantized,
-          autoPrice: false
+          autoPrice: false,
+          pricePrecision: updatedPrecision
         }
       })
     )
@@ -687,7 +776,8 @@ export default function Page2() {
         return {
           ...order,
           price: livePrice,
-          autoPrice: true
+          autoPrice: true,
+          pricePrecision: derivePricePrecision(livePrice)
         }
       })
     )
@@ -946,7 +1036,7 @@ export default function Page2() {
               ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true, limitHighValues: true })} USDC`
               : null
             const sizeNumber = parseDecimalValue(order.size)
-            const priceNumber = displayedPrice === '' ? NaN : Number(displayedPrice)
+            const priceNumber = parseDecimalValue(displayedPrice)
             const notionalUsd = Number.isFinite(sizeNumber) && Number.isFinite(priceNumber)
               ? sizeNumber * priceNumber
               : null
@@ -1081,6 +1171,7 @@ export default function Page2() {
                           pattern="[0-9]*[.,]?[0-9]*"
                           value={displayedPrice}
                           onChange={(e) => updateOrderField(index, 'price', e.target.value)}
+                          onBlur={() => finalizeManualPrice(index)}
                           placeholder="0,0046"
                           style={{
                             width: '100%',
