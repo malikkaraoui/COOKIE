@@ -12,7 +12,7 @@ import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
-import { useMarketData } from '../context/MarketDataContext'
+import { useMarketData } from '../providers/MarketDataProvider'
 import { getTokenConfig } from '../config/tokenList'
 import { 
   placeHyperliquidTestOrder, 
@@ -85,10 +85,28 @@ const TOKEN_PRICE_CONSTRAINTS = {
   ETH: { tick: 0.1, decimals: 1 }
 }
 const DEFAULT_PRICE_DECIMALS = 4
-const PRICE_INPUT_STEP = '0.00000001'
-const PRICE_INPUT_MIN = '0.00000001'
-const PRICE_DISPLAY_FRACTION_DIGITS = 8
-const SMALL_VALUE_MAX_DECIMALS = 8
+// Supporter les tokens Hyperliquid avec des prix < 1e-8 (ex: kPEPE)
+const PRICE_DISPLAY_FRACTION_DIGITS = 12
+const SMALL_VALUE_MAX_DECIMALS = 12
+const PRICE_NUDGE_DECIMALS = 6
+const PRICE_NUDGE_STEP = 1 / (10 ** PRICE_NUDGE_DECIMALS)
+
+const trimTrailingZeros = (value) => {
+  if (value == null) {
+    return ''
+  }
+  const stringValue = String(value)
+  if (!stringValue.includes('.')) {
+    return stringValue
+  }
+  const trimmed = stringValue
+    .replace(/(\.\d*?[1-9])0+$/u, '$1')
+    .replace(/\.0+$/u, '')
+  if (trimmed === '' || trimmed === '-') {
+    return '0'
+  }
+  return trimmed
+}
 
 const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
 
@@ -190,12 +208,7 @@ const getPriceStepValue = (symbol) => {
   if (constraint?.tick) {
     return constraint.tick
   }
-  const decimals = getPriceDecimals(symbol)
-  if (!Number.isFinite(decimals) || decimals < 0) {
-    return Number(PRICE_INPUT_STEP)
-  }
-  const step = 1 / (10 ** Math.min(decimals, PRICE_DISPLAY_FRACTION_DIGITS))
-  return step > 0 ? step : Number(PRICE_INPUT_STEP)
+  return PRICE_NUDGE_STEP
 }
 
 const clampDecimalsForValue = (numericValue, decimals) => {
@@ -219,18 +232,18 @@ const quantizePrice = (symbol, value) => {
   const constraint = getPriceConstraint(symbol)
   if (!constraint) {
     const decimals = clampDecimalsForValue(numeric, PRICE_DISPLAY_FRACTION_DIGITS)
-    return numeric.toFixed(decimals)
+    return trimTrailingZeros(numeric.toFixed(decimals))
   }
   const { tick, decimals = PRICE_DISPLAY_FRACTION_DIGITS } = constraint
   if (!tick || tick <= 0) {
     const adjustedDecimals = clampDecimalsForValue(numeric, decimals)
-    return numeric.toFixed(adjustedDecimals)
+    return trimTrailingZeros(numeric.toFixed(adjustedDecimals))
   }
   const steps = Math.round(numeric / tick)
   const quantized = steps * tick
   const defaultDecimals = decimals ?? Math.max(0, (tick.toString().split('.')[1] || '').length)
   const decimalPlaces = clampDecimalsForValue(quantized, defaultDecimals)
-  return quantized.toFixed(decimalPlaces)
+  return trimTrailingZeros(quantized.toFixed(decimalPlaces))
 }
 
 function createBlankOrder(symbol = '') {
@@ -1053,25 +1066,41 @@ export default function Page2() {
                   </div>
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDC)</label>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px', marginTop: '4px' }}>
-                      <input
-                        type="number"
-                        min={PRICE_INPUT_MIN}
-                        step={PRICE_INPUT_STEP}
-                        value={displayedPrice}
-                        onChange={(e) => updateOrderField(index, 'price', e.target.value)}
-                        placeholder="87000"
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '10px',
+                        alignItems: 'stretch',
+                        marginTop: '4px'
+                      }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          pattern="[0-9]*[.,]?[0-9]*"
+                          value={displayedPrice}
+                          onChange={(e) => updateOrderField(index, 'price', e.target.value)}
+                          placeholder="0,0046"
+                          style={{
+                            width: '100%',
+                            borderRadius: '12px',
+                            padding: '12px 14px',
+                            background: '#0f172a',
+                            color: '#e5e7eb',
+                            border: '1px solid #1e293b',
+                            fontSize: '16px',
+                            fontVariantNumeric: 'tabular-nums'
+                          }}
+                        />
+                      </div>
+                      <div
                         style={{
-                          width: '100%',
-                          borderRadius: '10px',
-                          padding: '10px',
-                          background: '#0f172a',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b',
-                          fontVariantNumeric: 'tabular-nums'
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '8px'
                         }}
-                      />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      >
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1092,13 +1121,14 @@ export default function Page2() {
                           onTouchEnd={stopContinuousNudge}
                           onTouchCancel={stopContinuousNudge}
                           style={{
-                            padding: '6px 10px',
-                            borderRadius: '8px',
+                            width: '48px',
+                            height: '42px',
+                            borderRadius: '10px',
                             border: '1px solid #1e293b',
                             background: '#1d293b',
                             color: '#e5e7eb',
                             fontWeight: 700,
-                            fontSize: '16px',
+                            fontSize: '18px',
                             cursor: safeSymbol ? 'pointer' : 'not-allowed',
                             opacity: safeSymbol ? 1 : 0.5
                           }}
@@ -1127,13 +1157,14 @@ export default function Page2() {
                           onTouchEnd={stopContinuousNudge}
                           onTouchCancel={stopContinuousNudge}
                           style={{
-                            padding: '6px 10px',
-                            borderRadius: '8px',
+                            width: '48px',
+                            height: '42px',
+                            borderRadius: '10px',
                             border: '1px solid #1e293b',
                             background: '#1d293b',
                             color: '#e5e7eb',
                             fontWeight: 700,
-                            fontSize: '16px',
+                            fontSize: '18px',
                             cursor: safeSymbol ? 'pointer' : 'not-allowed',
                             opacity: safeSymbol ? 1 : 0.5
                           }}

@@ -1,7 +1,7 @@
 {
   "name": "cookie",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite --mode development",
@@ -11,6 +11,7 @@
     "build:dev": "vite build --mode development",
     "build:staging": "vite build --mode staging",
     "lint": "eslint .",
+    "bump:version": "node ./scripts/bump-version.js",
     "preview": "vite preview",
     "preview:staging": "vite preview --mode staging",
     "deploy:firebase": "npm run build && firebase deploy --only hosting"

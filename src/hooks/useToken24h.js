@@ -1,6 +1,6 @@
 // Hook générique pour récupérer les données d'un token (prix + variation 24h)
 // Consomme MarketDataContext
-import { useMarketData } from '../context/MarketDataContext'
+import { useMarketData } from '../providers/MarketDataProvider'
 
 export default function useToken24h(symbol) {
   const { getToken } = useMarketData()

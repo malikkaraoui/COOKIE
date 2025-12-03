@@ -126,24 +126,24 @@ export default function Sidebar() {
 
   const links = [
     { 
-      to: '/ÉpicerieFine', 
+      to: '/epicerie-fine', 
       label: 'Épicerie fine',
       icon: ShoppingBasket
     },
     { 
-      to: '/MaCuisine', 
+      to: '/ma-cuisine', 
       label: 'Ma cuisine', 
       dropZone: true,
       icon: ChefHat
     },
     { 
-      to: '/LaMarmite', 
+      to: '/la-marmite', 
       label: 'La Marmite',
       icon: Soup
     },
     // Lien Stripe visible uniquement pour les utilisateurs connectés
     ...(user ? [{
-      to: '/Stripe',
+      to: '/stripe',
       label: 'Acheter Premium',
       icon: CreditCard
     }] : []),

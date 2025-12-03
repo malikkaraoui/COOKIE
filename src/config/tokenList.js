@@ -76,8 +76,8 @@ export const TOKENS = [
 ]
 
 // Helper : récupérer config d'un token par symbole
-const TOKEN_SYMBOL_SET = new Set(TOKENS.map(t => t.symbol))
-const TOKEN_ALIAS_LOOKUP = TOKENS.reduce((acc, token) => {
+const TOKEN_CANONICAL_LOOKUP = TOKENS.reduce((acc, token) => {
+  acc[token.symbol.toUpperCase()] = token.symbol
   if (Array.isArray(token.aliases)) {
     token.aliases.forEach((alias) => {
       acc[alias.toUpperCase()] = token.symbol
@@ -91,10 +91,7 @@ export function normalizeHyperliquidSymbol(symbol) {
   if (!normalized) {
     return ''
   }
-  if (TOKEN_SYMBOL_SET.has(normalized)) {
-    return normalized
-  }
-  return TOKEN_ALIAS_LOOKUP[normalized] || normalized
+  return TOKEN_CANONICAL_LOOKUP[normalized] || normalized
 }
 
 export function getTokenConfig(symbol) {
