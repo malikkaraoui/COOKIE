@@ -99,8 +99,22 @@ require("ts-node").register({
   project: require("path").join(__dirname, "tsconfig.json"),
 });
 
-const { placeTestOrder, listOpenOrders, closeAllPositions } = require("./src/index");
+const {
+  placeTestOrder,
+  listOpenOrders,
+  closeAllPositions,
+  placeBinanceSpotOrder,
+  listBinanceOpenOrders,
+  cancelBinanceOpenOrdersOnSymbol,
+  cancelAllBinanceOpenOrders,
+  closeAndDustBinancePositions,
+} = require("./src/index");
 
 exports.placeTestOrder = placeTestOrder;
 exports.listOpenOrders = listOpenOrders;
 exports.closeAllPositions = closeAllPositions;
+exports.placeBinanceSpotOrder = placeBinanceSpotOrder;
+exports.listBinanceOpenOrders = listBinanceOpenOrders;
+exports.cancelBinanceOpenOrdersOnSymbol = cancelBinanceOpenOrdersOnSymbol;
+exports.cancelAllBinanceOpenOrders = cancelAllBinanceOpenOrders;
+exports.closeAndDustBinancePositions = closeAndDustBinancePositions;
