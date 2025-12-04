@@ -25,6 +25,7 @@ import {
   placeBinancePresetOrder,
   placeBinanceLargePresetOrder,
   fetchBinanceOpenOrders,
+  fetchBinanceSpotBalances,
   cancelAllBinanceOrders,
   closeAndDustBinancePositions,
   BINANCE_PRESET_ORDER
@@ -103,6 +104,11 @@ const PRICE_NUDGE_STEP = 1 / (10 ** PRICE_NUDGE_DECIMALS)
 const BINANCE_MAX_ORDER_FORMS = 10
 const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
+const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
+const IMPORTANT_BINANCE_ASSETS = new Set([
+  'USDT','USDC','BUSD','TUSD','FDUSD','DAI','USDP','USDD','BTC','ETH','BNB','SOL','XRP','DOGE','TON','ADA','AVAX','TRX','DOT','MATIC','ATOM','ARB','OP','APT','SUI','LINK','UNI','PEPE','SHIB','INJ','TIA','SEI','JUP','RUNE','CAKE','LTC','BCH'
+])
+const BINANCE_STABLE_ASSETS = new Set(['USDT','USDC','BUSD','FDUSD','TUSD','USDP','DAI'])
 
 const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   acc[token.id.toUpperCase()] = token
@@ -338,6 +344,62 @@ function createBlankBinanceOrder(symbol = '') {
   }
 }
 
+const parseBinanceFilters = (symbolInfo) => {
+  if (!symbolInfo?.filters) {
+    return null
+  }
+  const constraints = {}
+  symbolInfo.filters.forEach((filter) => {
+    if (!filter?.filterType) return
+    if (filter.filterType === 'LOT_SIZE') {
+      constraints.stepSize = Number(filter.stepSize)
+      constraints.minQty = Number(filter.minQty)
+      constraints.maxQty = Number(filter.maxQty)
+    }
+    if (filter.filterType === 'PRICE_FILTER') {
+      constraints.tickSize = Number(filter.tickSize)
+      constraints.minPrice = Number(filter.minPrice)
+      constraints.maxPrice = Number(filter.maxPrice)
+    }
+    if (filter.filterType === 'MIN_NOTIONAL' || filter.filterType === 'NOTIONAL') {
+      constraints.minNotional = Number(filter.minNotional)
+    }
+  })
+  return constraints
+}
+
+const quantizeWithStep = (value, step) => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return NaN
+  }
+  if (!Number.isFinite(step) || !step || step <= 0) {
+    return value
+  }
+  const steps = Math.floor(value / step + 1e-12)
+  return steps * step
+}
+
+const getStepDecimals = (step) => {
+  if (!Number.isFinite(step) || step <= 0) {
+    return 8
+  }
+  const asString = step.toString()
+  if (asString.includes('e-')) {
+    const exponent = Number(asString.split('e-')[1])
+    return Number.isFinite(exponent) ? Math.min(Math.max(exponent, 0), 12) : 8
+  }
+  const [, decimals] = asString.split('.')
+  return Math.min(decimals ? decimals.length : 0, 12)
+}
+
+const formatWithStepPrecision = (value, step) => {
+  if (!Number.isFinite(value)) {
+    return ''
+  }
+  const decimals = getStepDecimals(step)
+  return trimTrailingZeros(value.toFixed(decimals || 8))
+}
+
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
@@ -349,6 +411,12 @@ export default function Page2() {
   const [binanceCancelStatus, setBinanceCancelStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceDustStatus, setBinanceDustStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceBatchStatus, setBinanceBatchStatus] = useState({ state: 'idle', message: '', payload: null })
+  const [binanceBalanceStatus, setBinanceBalanceStatus] = useState({ state: 'idle', message: '', payload: null })
+  const [binanceSpotBalances, setBinanceSpotBalances] = useState([])
+  const [binanceSpotSummary, setBinanceSpotSummary] = useState(null)
+  const [binanceSymbolFiltersState, setBinanceSymbolFiltersState] = useState({})
+  const [showAllBinanceBalances, setShowAllBinanceBalances] = useState(false)
+  const [showBinanceLogs, setShowBinanceLogs] = useState(false)
   const [binanceOpenOrders, setBinanceOpenOrders] = useState([])
   const [binanceRecentOrders, setBinanceRecentOrders] = useState([])
   const [orderForms, setOrderForms] = useState(() => ([createBlankOrder()]))
@@ -531,6 +599,37 @@ export default function Page2() {
     return applyMinSizeUnits(symbol, quantized)
   }, [tokenPriceMap])
 
+  const fetchBinanceSymbolFilters = useCallback(async (pairSymbol) => {
+    const normalized = typeof pairSymbol === 'string' ? pairSymbol.trim().toUpperCase() : ''
+    if (!normalized) {
+      return null
+    }
+    if (binanceFiltersCacheRef.current[normalized]) {
+      return binanceFiltersCacheRef.current[normalized]
+    }
+    try {
+      const response = await fetch(`${BINANCE_PRICE_FILTER_ENDPOINT}?symbol=${normalized}`)
+      if (!response.ok) {
+        throw new Error(`Impossible de récupérer les filtres Binance pour ${normalized}`)
+      }
+      const payload = await response.json()
+      const info = Array.isArray(payload?.symbols) ? payload.symbols[0] : null
+      const constraints = parseBinanceFilters(info)
+      if (constraints) {
+        binanceFiltersCacheRef.current[normalized] = constraints
+        setBinanceSymbolFiltersState((prev) => ({ ...prev, [normalized]: constraints }))
+        return constraints
+      }
+    } catch (error) {
+      console.warn('⚠️ Impossible de charger les filtres Binance', {
+        symbol: normalized,
+        message: error instanceof Error ? error.message : String(error)
+      })
+    }
+    binanceFiltersCacheRef.current[normalized] = null
+    return null
+  }, [])
+
   const visibleOrderForms = useMemo(() => {
     return orderForms.map((order) => {
       if (!order.symbol) {
@@ -548,6 +647,24 @@ export default function Page2() {
       return isBinanceSymbolAllowed(order.symbol) ? order : { ...order, symbol: '' }
     })
   }, [binanceOrderForms, isBinanceSymbolAllowed])
+
+  useEffect(() => {
+    const uniquePairs = new Set()
+    visibleBinanceOrderForms.forEach((order) => {
+      const canonical = findBinanceSymbol(order.symbol)
+      if (!canonical) return
+      const pairSymbol = getBinancePairSymbol(canonical)
+      if (pairSymbol) {
+        uniquePairs.add(pairSymbol)
+      }
+    })
+    if (uniquePairs.size === 0) {
+      return
+    }
+    uniquePairs.forEach((symbol) => {
+      fetchBinanceSymbolFilters(symbol)
+    })
+  }, [visibleBinanceOrderForms, fetchBinanceSymbolFilters, findBinanceSymbol])
 
   
   // Simulateur de portfolio avec les tokens dynamiques
@@ -1441,29 +1558,74 @@ export default function Page2() {
       return
     }
 
-    const sanitizedOrders = binanceOrderForms
-      .map((order, index) => {
+    const validationIssues = []
+    const preparedOrders = await Promise.all(
+      binanceOrderForms.map(async (order, index) => {
         const canonical = findBinanceSymbol(order.symbol)
         if (!canonical) {
+          validationIssues.push(`Ordre #${index + 1} : sélectionne un token Binance valide.`)
           return null
         }
         const pairSymbol = getBinancePairSymbol(canonical)
-        const sizeValue = parseDecimalValue(order.size)
-        const priceValue = parseDecimalValue(order.price)
+        if (!pairSymbol) {
+          validationIssues.push(`Ordre #${index + 1} : paire Binance introuvable.`)
+          return null
+        }
+
+        const desiredSize = order.autoSize ? computeBinanceAutoSize(canonical) : order.size
+        const desiredPrice = order.autoPrice ? computeAutoLimitPrice(canonical) : order.price
+        const sizeValue = parseDecimalValue(toCanonicalDecimalString(desiredSize))
+        const priceValue = parseDecimalValue(toCanonicalDecimalString(desiredPrice))
         if (!Number.isFinite(sizeValue) || sizeValue <= 0) {
+          validationIssues.push(`Ordre #${index + 1} : taille invalide.`)
           return null
         }
         if (!Number.isFinite(priceValue) || priceValue <= 0) {
+          validationIssues.push(`Ordre #${index + 1} : prix invalide.`)
           return null
         }
-        const quantity = quantizeSize(canonical, toCanonicalDecimalString(order.size), 'round')
-        const limitPrice = quantizePrice(canonical, priceValue)
-        if (!quantity || !limitPrice) {
-          return null
+
+        const constraints = binanceSymbolFiltersState[pairSymbol] || (await fetchBinanceSymbolFilters(pairSymbol))
+        let canonicalQuantity = ''
+        let canonicalPrice = ''
+
+        if (constraints) {
+          let normalizedQty = quantizeWithStep(sizeValue, constraints.stepSize)
+          if (!Number.isFinite(normalizedQty) || normalizedQty <= 0) {
+            validationIssues.push(`Ordre #${index + 1} : quantité trop faible pour ${canonical}.`)
+            return null
+          }
+          if (Number.isFinite(constraints.minQty) && normalizedQty < constraints.minQty) {
+            validationIssues.push(`Ordre #${index + 1} : minimum ${constraints.minQty} ${canonical}.`)
+            return null
+          }
+          canonicalQuantity = toCanonicalDecimalString(formatWithStepPrecision(normalizedQty, constraints.stepSize))
+
+          let normalizedPrice = quantizeWithStep(priceValue, constraints.tickSize)
+          if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
+            validationIssues.push(`Ordre #${index + 1} : prix trop faible pour ${pairSymbol}.`)
+            return null
+          }
+          canonicalPrice = toCanonicalDecimalString(formatWithStepPrecision(normalizedPrice, constraints.tickSize))
+
+          const numericNotional = parseDecimalValue(canonicalQuantity) * parseDecimalValue(canonicalPrice)
+          if (Number.isFinite(constraints.minNotional) && numericNotional < constraints.minNotional) {
+            validationIssues.push(`Ordre #${index + 1} : notional ${numericNotional.toFixed(4)} < min ${constraints.minNotional}.`)
+            return null
+          }
+        } else {
+          const quantity = quantizeSize(canonical, toCanonicalDecimalString(desiredSize), 'round')
+          const limitPrice = quantizePrice(canonical, priceValue)
+          if (!quantity || !limitPrice) {
+            validationIssues.push(`Ordre #${index + 1} : impossible de normaliser taille/prix.`)
+            return null
+          }
+          canonicalQuantity = toCanonicalDecimalString(quantity)
+          canonicalPrice = toCanonicalDecimalString(limitPrice)
         }
-        const canonicalQuantity = toCanonicalDecimalString(quantity)
-        const canonicalPrice = toCanonicalDecimalString(limitPrice)
-        const notional = Number((sizeValue * priceValue).toFixed(6))
+
+        const notional = Number((parseDecimalValue(canonicalQuantity) * parseDecimalValue(canonicalPrice)).toFixed(8))
+
         return {
           payload: {
             symbol: pairSymbol,
@@ -1480,11 +1642,23 @@ export default function Page2() {
             notional,
             quantity: canonicalQuantity,
             price: canonicalPrice,
-            side: order.side
+            side: order.side,
+            constraints: constraints || null
           }
         }
       })
-      .filter(Boolean)
+    )
+
+    if (validationIssues.length > 0) {
+      setBinanceBatchStatus({
+        state: 'error',
+        message: validationIssues.join(' • '),
+        payload: null
+      })
+      return
+    }
+
+    const sanitizedOrders = preparedOrders.filter(Boolean)
 
     if (sanitizedOrders.length === 0) {
       setBinanceBatchStatus({ state: 'error', message: 'Ajoute au moins un ordre Binance valide (token, taille, prix).', payload: null })
@@ -1527,6 +1701,41 @@ export default function Page2() {
     })
   }
 
+  const refreshBinanceSpotBalances = useCallback(async (trigger = 'auto') => {
+    setBinanceBalanceStatus((prev) => ({
+      state: 'loading',
+      message: trigger === 'manual' ? 'Rafraîchissement manuel…' : 'Rafraîchissement auto…',
+      payload: prev.payload
+    }))
+    try {
+      const response = await fetchBinanceSpotBalances()
+      setBinanceSpotBalances(Array.isArray(response?.balances) ? response.balances : [])
+      setBinanceSpotSummary(response?.summary || null)
+      const fetchedAt = response?.fetchedAt ? new Date(response.fetchedAt) : new Date()
+      setBinanceBalanceStatus({
+        state: 'success',
+        message: `Mise à jour à ${fetchedAt.toLocaleTimeString('fr-FR', { hour12: false })}`,
+        payload: response
+      })
+    } catch (error) {
+      setBinanceBalanceStatus({
+        state: 'error',
+        message: error instanceof Error ? error.message : 'Erreur inconnue',
+        payload: null
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshBinanceSpotBalances('auto')
+    const interval = setInterval(() => {
+      refreshBinanceSpotBalances('auto')
+    }, 10000)
+    return () => {
+      clearInterval(interval)
+    }
+  }, [refreshBinanceSpotBalances])
+
   const statusColorMap = {
     idle: '#94a3b8',
     loading: '#fbbf24',
@@ -1543,10 +1752,31 @@ export default function Page2() {
   const binanceCancelStatusColor = statusColorMap[binanceCancelStatus.state]
   const binanceDustStatusColor = statusColorMap[binanceDustStatus.state]
   const binanceBatchStatusColor = statusColorMap[binanceBatchStatus.state]
+  const binanceBalancesStatusColor = statusColorMap[binanceBalanceStatus.state]
   const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
   const openPositionsList = openOrdersStatus.payload?.openPositions ?? []
   const binanceOpenOrdersList = Array.isArray(binanceOpenOrders) ? binanceOpenOrders : []
   const binanceRecentOrdersList = Array.isArray(binanceRecentOrders) ? binanceRecentOrders : []
+  const binanceSpotBalancesList = Array.isArray(binanceSpotBalances) ? binanceSpotBalances : []
+  const binanceSpotSummaryData = binanceSpotSummary && typeof binanceSpotSummary === 'object' ? binanceSpotSummary : null
+  const binanceBalancesLastUpdate = binanceBalanceStatus.payload?.fetchedAt
+    ? new Date(binanceBalanceStatus.payload.fetchedAt).toLocaleString('fr-FR', { hour12: false })
+    : null
+  const binanceFiltersCacheRef = useRef({})
+  const importantBinanceBalances = useMemo(() => {
+    return binanceSpotBalancesList.filter((balance) => IMPORTANT_BINANCE_ASSETS.has(balance.asset))
+  }, [binanceSpotBalancesList])
+  const displayedBinanceBalances = showAllBinanceBalances ? binanceSpotBalancesList : importantBinanceBalances
+  const hiddenBalancesCount = binanceSpotBalancesList.length - displayedBinanceBalances.length
+  const stableBalanceTotal = useMemo(() => {
+    return binanceSpotBalancesList.reduce((acc, balance) => {
+      if (!BINANCE_STABLE_ASSETS.has(balance.asset)) {
+        return acc
+      }
+      const numeric = Number(balance.total)
+      return Number.isFinite(numeric) ? acc + numeric : acc
+    }, 0)
+  }, [binanceSpotBalancesList])
 
   const formatNumericString = (value, options = {}) => {
     const {
@@ -1588,7 +1818,7 @@ export default function Page2() {
   }
 
   return (
-    <div style={{ padding: '40px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
       {/* Header */}
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ 
@@ -1605,13 +1835,265 @@ export default function Page2() {
         </p>
       </div>
 
+      {/* Portefeuille Binance Spot */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #030b17 0%, #010510 100%)',
+          borderRadius: '16px',
+          padding: '20px',
+          marginBottom: '24px',
+          border: '1px solid #0f1d2f',
+          boxShadow: '0 12px 25px rgba(1, 5, 16, 0.65)'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}
+        >
+          <div>
+            <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Portefeuille Binance (spot)</p>
+            <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
+              Rafraîchissement automatique toutes les 10&nbsp;s via Firebase Functions. {binanceBalanceStatus.message || 'Synchronisation en cours…'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 14px',
+                borderRadius: '999px',
+                border: '1px solid #1e293b',
+                background: '#010814'
+              }}
+            >
+              <span
+                style={{
+                  width: '9px',
+                  height: '9px',
+                  borderRadius: '999px',
+                  background: binanceBalancesStatusColor
+                }}
+              ></span>
+              <span style={{ color: '#cbd5f5', fontSize: '13px', fontWeight: 600 }}>Auto 10s</span>
+            </div>
+            <button
+              onClick={() => refreshBinanceSpotBalances('manual')}
+              disabled={binanceBalanceStatus.state === 'loading'}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '10px',
+                border: '1px solid #1e293b',
+                background:
+                  binanceBalanceStatus.state === 'loading'
+                    ? '#0f172a'
+                    : '#081227',
+                color: '#f8fafc',
+                fontWeight: 600,
+                cursor: binanceBalanceStatus.state === 'loading' ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {binanceBalanceStatus.state === 'loading' ? 'Sync…' : 'Rafraîchir'}
+            </button>
+          </div>
+        </div>
+
+        {binanceSpotSummaryData && (
+          <div
+            style={{
+              marginTop: '14px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+              gap: '10px'
+            }}
+          >
+            {[
+              {
+                label: 'Actifs > 0',
+                value: binanceSpotSummaryData.assets ?? '—'
+              },
+              {
+                label: 'Stables (≈USD)',
+                value: `${formatNumericString(stableBalanceTotal || 0, { maximumFractionDigits: 2, limitHighValues: true })} USDT`
+              },
+              {
+                label: 'Trading',
+                value:
+                  binanceSpotSummaryData.canTrade === true
+                    ? 'Autorisé'
+                    : binanceSpotSummaryData.canTrade === false
+                      ? 'Bloqué'
+                      : '—'
+              },
+              {
+                label: 'Dépôts',
+                value:
+                  binanceSpotSummaryData.canDeposit === true
+                    ? 'OK'
+                    : binanceSpotSummaryData.canDeposit === false
+                      ? 'Bloqués'
+                      : '—'
+              },
+              {
+                label: 'Retraits',
+                value:
+                  binanceSpotSummaryData.canWithdraw === true
+                    ? 'OK'
+                    : binanceSpotSummaryData.canWithdraw === false
+                      ? 'Bloqués'
+                      : '—'
+              }
+            ].map((item) => (
+              <div
+                key={item.label}
+                style={{
+                  border: '1px solid #1d2a3a',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  background: '#020a16'
+                }}
+              >
+                <p style={{ color: '#64748b', margin: 0, fontSize: '12px', letterSpacing: '0.03em' }}>{item.label}</p>
+                <p style={{ color: '#e2e8f0', margin: '6px 0 0', fontWeight: 600 }}>{item.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {displayedBinanceBalances.length > 0 ? (
+          <>
+            <div
+              style={{
+                marginTop: '16px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '12px'
+              }}
+            >
+              {displayedBinanceBalances.map((balance) => (
+                <div
+                  key={balance.asset}
+                  style={{
+                    border: '1px solid #152337',
+                    borderRadius: '12px',
+                    padding: '14px',
+                    background: '#010915'
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      gap: '10px'
+                    }}
+                  >
+                    <p style={{ color: '#f8fafc', margin: 0, fontWeight: 600 }}>{balance.asset}</p>
+                    <span
+                      style={{
+                        color: '#38bdf8',
+                        fontSize: '13px',
+                        fontWeight: 700
+                      }}
+                    >
+                      {formatNumericString(balance.total, {
+                        maximumFractionDigits: 8,
+                        preserveTinyValues: true
+                      })}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                      gap: '10px',
+                      marginTop: '12px'
+                    }}
+                  >
+                    {[{ label: 'Libre', value: balance.free }, { label: 'Verrouillé', value: balance.locked }].map((field) => (
+                      <div key={`${balance.asset}-${field.label}`}>
+                        <p style={{ color: '#64748b', margin: 0, fontSize: '12px' }}>{field.label}</p>
+                        <p style={{ color: '#e2e8f0', margin: '4px 0 0', fontWeight: 600 }}>
+                          {formatNumericString(field.value, {
+                            maximumFractionDigits: 8,
+                            preserveTinyValues: true
+                          })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {(hiddenBalancesCount > 0 || showAllBinanceBalances) && (
+              <div
+                style={{
+                  marginTop: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '10px'
+                }}
+              >
+                <p style={{ color: '#94a3b8', margin: 0, fontSize: '13px' }}>
+                  {showAllBinanceBalances
+                    ? 'Tous les actifs sont affichés.'
+                    : `+ ${hiddenBalancesCount} autres devise(s) masquée(s).`}
+                </p>
+                <button
+                  onClick={() => setShowAllBinanceBalances((prev) => !prev)}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '10px',
+                    border: '1px solid #1e293b',
+                    background: '#020a16',
+                    color: '#e5e7eb',
+                    fontWeight: 600
+                  }}
+                >
+                  {showAllBinanceBalances
+                    ? 'Masquer les devises secondaires'
+                    : `Afficher tout (${binanceSpotBalancesList.length})`}
+                </button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div
+            style={{
+              marginTop: '16px',
+              border: '1px dashed #1d2a3a',
+              borderRadius: '12px',
+              padding: '18px',
+              background: 'rgba(1, 10, 22, 0.4)'
+            }}
+          >
+            <p style={{ color: '#94a3b8', margin: 0 }}>
+              Aucun solde détecté pour le moment. Lance un test de dépôt/ordre ou réessaie le rafraîchissement manuel.
+            </p>
+          </div>
+        )}
+
+        <p style={{ color: '#475569', marginTop: '12px', fontSize: '12px' }}>
+          Dernière synchronisation : {binanceBalancesLastUpdate || '—'}
+        </p>
+      </div>
+
       {/* Contrôle Binance Spot */}
       <div
         style={{
           background: 'linear-gradient(135deg, #051425 0%, #020812 100%)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
+          borderRadius: '14px',
+          padding: '20px',
+          marginBottom: '20px',
           border: '1px solid #102038',
           boxShadow: '0 10px 35px rgba(2, 8, 18, 0.65)'
         }}
@@ -1696,17 +2178,17 @@ export default function Page2() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '12px',
-            marginTop: '20px'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+            gap: '10px',
+            marginTop: '16px'
           }}
         >
           <button
             onClick={handleBinancePresetOrder}
             disabled={binanceOrderStatus.state === 'loading'}
             style={{
-              padding: '14px 18px',
-              borderRadius: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
               border: 'none',
               background:
                 binanceOrderStatus.state === 'loading'
@@ -1714,7 +2196,7 @@ export default function Page2() {
                   : 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
               color: '#f8fafc',
               fontWeight: 600,
-              fontSize: '15px',
+              fontSize: '14px',
               cursor: binanceOrderStatus.state === 'loading' ? 'wait' : 'pointer',
               transition: 'all 0.2s ease'
             }}
@@ -1726,8 +2208,8 @@ export default function Page2() {
             onClick={handleBinanceLargePresetOrder}
             disabled={binanceLargeOrderStatus.state === 'loading'}
             style={{
-              padding: '14px 18px',
-              borderRadius: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
               border: '1px solid #1f2d40',
               background:
                 binanceLargeOrderStatus.state === 'loading'
@@ -1735,7 +2217,7 @@ export default function Page2() {
                   : 'linear-gradient(135deg, #7c3aed, #c026d3)',
               color: '#fdf4ff',
               fontWeight: 600,
-              fontSize: '15px',
+              fontSize: '14px',
               cursor: binanceLargeOrderStatus.state === 'loading' ? 'wait' : 'pointer',
               transition: 'all 0.2s ease'
             }}
@@ -1747,13 +2229,13 @@ export default function Page2() {
             onClick={handleFetchBinanceOpenOrders}
             disabled={binanceFetchStatus.state === 'loading'}
             style={{
-              padding: '14px 18px',
-              borderRadius: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
               border: '1px solid #1e293b',
               background: '#020a16',
               color: '#e2e8f0',
               fontWeight: 600,
-              fontSize: '15px',
+              fontSize: '14px',
               cursor: binanceFetchStatus.state === 'loading' ? 'wait' : 'pointer'
             }}
           >
@@ -1764,8 +2246,8 @@ export default function Page2() {
             onClick={handleCancelAllBinanceOrders}
             disabled={binanceCancelStatus.state === 'loading'}
             style={{
-              padding: '14px 18px',
-              borderRadius: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
               border: 'none',
               background:
                 binanceCancelStatus.state === 'loading'
@@ -1773,7 +2255,7 @@ export default function Page2() {
                   : 'linear-gradient(135deg, #be123c, #fb7185)',
               color: '#fff1f2',
               fontWeight: 700,
-              fontSize: '15px',
+              fontSize: '14px',
               cursor: binanceCancelStatus.state === 'loading' ? 'wait' : 'pointer'
             }}
           >
@@ -1784,8 +2266,8 @@ export default function Page2() {
             onClick={handleCloseAndDustBinancePositions}
             disabled={binanceDustStatus.state === 'loading'}
             style={{
-              padding: '14px 18px',
-              borderRadius: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
               border: 'none',
               background:
                 binanceDustStatus.state === 'loading'
@@ -1793,7 +2275,7 @@ export default function Page2() {
                   : 'linear-gradient(135deg, #a855f7, #ec4899)',
               color: '#fdf4ff',
               fontWeight: 700,
-              fontSize: '15px',
+              fontSize: '14px',
               cursor: binanceDustStatus.state === 'loading' ? 'wait' : 'pointer'
             }}
           >
@@ -2256,9 +2738,9 @@ export default function Page2() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '14px',
-            marginTop: '22px'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '10px',
+            marginTop: '18px'
           }}
         >
           {[
@@ -2273,8 +2755,8 @@ export default function Page2() {
               key={item.label}
               style={{
                 border: '1px solid #1d2a3a',
-                borderRadius: '14px',
-                padding: '14px 16px',
+                borderRadius: '12px',
+                padding: '12px 14px',
                 background: '#010814'
               }}
             >
@@ -2296,61 +2778,93 @@ export default function Page2() {
           ))}
         </div>
 
-        <div style={{ marginTop: '20px' }}>
-          <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Réponses API Binance (brut)</p>
-          <p style={{ color: '#94a3b8', margin: '6px 0 14px' }}>
-            Analyse directement les payloads renvoyés par Firebase pour comprendre ce que Binance retourne.
-          </p>
+        <div style={{ marginTop: '18px' }}>
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-              gap: '12px'
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap'
             }}
           >
-            {[
-              { label: 'Envoi ordre market', status: binanceOrderStatus },
-              { label: 'Ordre market 100 USDT', status: binanceLargeOrderStatus },
-              { label: 'Listing des ordres', status: binanceFetchStatus },
-              { label: 'Fermeture / Cancel all', status: binanceCancelStatus },
-              { label: 'Fermeture + BNB', status: binanceDustStatus },
-              { label: 'Batch multi-ordres', status: binanceBatchStatus }
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  border: '1px solid #1d2a3a',
-                  borderRadius: '14px',
-                  padding: '14px',
-                  background: '#020a16',
-                  minHeight: '220px',
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
-              >
-                <div style={{ marginBottom: '8px' }}>
-                  <p style={{ color: '#cbd5f5', margin: 0, fontWeight: 600 }}>{item.label}</p>
-                  <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '13px' }}>
-                    {item.status.message || 'Aucune requête envoyée.'}
-                  </p>
-                </div>
-                <pre
-                  style={{
-                    flex: 1,
-                    margin: 0,
-                    borderRadius: '10px',
-                    background: '#010711',
-                    color: '#e2e8f0',
-                    padding: '12px',
-                    fontSize: '12px',
-                    lineHeight: 1.3,
-                    overflowX: 'auto',
-                    border: '1px solid #0f172a'
-                  }}
-                >{formatJsonPayload(item.status.payload)}</pre>
-              </div>
-            ))}
+            <div>
+              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Réponses API Binance (brut)</p>
+              <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
+                Analyse les payloads Firebase uniquement quand tu en as besoin.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowBinanceLogs((prev) => !prev)}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                border: '1px solid #1e293b',
+                background: '#020a16',
+                color: '#cbd5f5',
+                fontSize: '13px',
+                fontWeight: 600
+              }}
+            >
+              {showBinanceLogs ? 'Masquer les logs' : 'Afficher les logs'}
+            </button>
           </div>
+
+          {showBinanceLogs && (
+            <div
+              style={{
+                marginTop: '12px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '10px'
+              }}
+            >
+              {[
+                { label: 'Envoi ordre market', status: binanceOrderStatus },
+                { label: 'Ordre market 100 USDT', status: binanceLargeOrderStatus },
+                { label: 'Listing des ordres', status: binanceFetchStatus },
+                { label: 'Fermeture / Cancel all', status: binanceCancelStatus },
+                { label: 'Fermeture + BNB', status: binanceDustStatus },
+                { label: 'Batch multi-ordres', status: binanceBatchStatus }
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    border: '1px solid #1d2a3a',
+                    borderRadius: '12px',
+                    padding: '12px',
+                    background: '#020a16',
+                    minHeight: '180px',
+                    display: 'flex',
+                    flexDirection: 'column'
+                  }}
+                >
+                  <div style={{ marginBottom: '6px' }}>
+                    <p style={{ color: '#cbd5f5', margin: 0, fontWeight: 600, fontSize: '14px' }}>{item.label}</p>
+                    <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '12px' }}>
+                      {item.status.message || 'Aucune requête envoyée.'}
+                    </p>
+                  </div>
+                  <pre
+                    style={{
+                      flex: 1,
+                      margin: 0,
+                      borderRadius: '10px',
+                      background: '#010711',
+                      color: '#e2e8f0',
+                      padding: '10px',
+                      fontSize: '11px',
+                      lineHeight: 1.25,
+                      overflowX: 'auto',
+                      overflowY: 'auto',
+                      maxHeight: '140px',
+                      border: '1px solid #0f172a'
+                    }}
+                  >{formatJsonPayload(item.status.payload)}</pre>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: '26px' }}>

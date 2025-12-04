@@ -29,6 +29,7 @@ const buildUrl = (path: string) => `${getFunctionsBaseUrl()}${path}`;
 
 const placeOrderEndpoint = () => buildUrl("/placeBinanceSpotOrder");
 const listOpenOrdersEndpoint = () => buildUrl("/listBinanceOpenOrders");
+const listSpotBalancesEndpoint = () => buildUrl("/listBinanceSpotBalances");
 const cancelSymbolEndpoint = () => buildUrl("/cancelBinanceOpenOrdersOnSymbol");
 const cancelAllEndpoint = () => buildUrl("/cancelAllBinanceOpenOrders");
 const closeAndDustEndpoint = () => buildUrl("/closeAndDustBinancePositions");
@@ -114,6 +115,32 @@ export interface BinanceOrdersResponse {
   historySymbol?: string;
 }
 
+export interface BinanceSpotBalanceEntry {
+  asset: string;
+  free: string;
+  locked: string;
+  total: number;
+}
+
+export interface BinanceSpotBalancesSummary {
+  assets: number;
+  totalFree: number;
+  totalLocked: number;
+  total: number;
+  canTrade: boolean | null;
+  canDeposit: boolean | null;
+  canWithdraw: boolean | null;
+  updateTime: number | null;
+}
+
+export interface BinanceSpotBalancesResponse {
+  ok: boolean;
+  fetchedAt: string;
+  summary: BinanceSpotBalancesSummary;
+  balances: BinanceSpotBalanceEntry[];
+  error?: string;
+}
+
 export async function fetchBinanceOpenOrders(options?: FetchBinanceOrdersOptions) {
   const params = new URLSearchParams();
   if (options?.symbol) {
@@ -139,6 +166,10 @@ export async function cancelBinanceOrdersOnSymbol(symbol: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ symbol }),
   });
+}
+
+export async function fetchBinanceSpotBalances() {
+  return performRequest<BinanceSpotBalancesResponse>(listSpotBalancesEndpoint());
 }
 
 export interface CancelAllBinanceOrdersPayload {

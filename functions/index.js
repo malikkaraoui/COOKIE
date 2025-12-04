@@ -105,6 +105,7 @@ const {
   closeAllPositions,
   placeBinanceSpotOrder,
   listBinanceOpenOrders,
+  listBinanceSpotBalances,
   cancelBinanceOpenOrdersOnSymbol,
   cancelAllBinanceOpenOrders,
   closeAndDustBinancePositions,
@@ -115,6 +116,7 @@ exports.listOpenOrders = listOpenOrders;
 exports.closeAllPositions = closeAllPositions;
 exports.placeBinanceSpotOrder = placeBinanceSpotOrder;
 exports.listBinanceOpenOrders = listBinanceOpenOrders;
+exports.listBinanceSpotBalances = listBinanceSpotBalances;
 exports.cancelBinanceOpenOrdersOnSymbol = cancelBinanceOpenOrdersOnSymbol;
 exports.cancelAllBinanceOpenOrders = cancelAllBinanceOpenOrders;
 exports.closeAndDustBinancePositions = closeAndDustBinancePositions;
