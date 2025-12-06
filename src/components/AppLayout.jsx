@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Topbar from './Topbar'
 import Sidebar from './Sidebar'
+import XpProgressBar from './XpProgressBar'
 import Page1 from '../pages/page1'
 import Page2 from '../pages/page2'
 import LaMarmite from '../pages/LaMarmite'
@@ -15,6 +16,7 @@ export default function AppLayout() {
   return (
     <div className="app">
       <Topbar />
+      <XpProgressBar />
 
       <div className="layout">
         <Sidebar />

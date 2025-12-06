@@ -52,20 +52,29 @@ export default function Sidebar() {
     const updateHeight = () => {
       const topbar = document.querySelector('.topbar')
       const resizer = document.querySelector('.topbar-resizer')
-      if (topbar && resizer) {
-        const topbarHeight = topbar.offsetHeight
-        const resizerHeight = resizer.offsetHeight
-        setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight}px)`)
-      }
+      const xpBanner = document.querySelector('.xp-banner')
+
+      const topbarHeight = topbar?.offsetHeight ?? 0
+      const resizerHeight = resizer?.offsetHeight ?? 0
+      const xpHeight = xpBanner?.offsetHeight ?? 0
+
+      setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight + xpHeight}px)`)
     }
-    
-    // Observer les changements de taille de la topbar
-    const observer = new ResizeObserver(updateHeight)
-    const topbar = document.querySelector('.topbar')
-    if (topbar) observer.observe(topbar)
-    
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateHeight)
+      : null
+
+    const observed = [
+      document.querySelector('.topbar'),
+      document.querySelector('.topbar-resizer'),
+      document.querySelector('.xp-banner')
+    ].filter(Boolean)
+
+    observed.forEach((el) => observer?.observe(el))
     updateHeight()
-    return () => observer.disconnect()
+
+    return () => observer?.disconnect()
   }, [])
 
   // info de routing actuelle (/page1, /page2, /page3, etc.)

@@ -27,9 +27,14 @@ export async function saveStrategyState(state: FundingStrategyState): Promise<vo
   if (!state?.coin) {
     throw new Error("state.coin requis pour saveStrategyState");
   }
+  const payloadEntries = Object.entries({ ...state, updatedAt: Date.now() })
+    .filter(([, value]) => value !== undefined);
+
+  const payload = Object.fromEntries(payloadEntries);
+
   await db()
     .ref(`${COLLECTION}/${state.coin.toUpperCase()}`)
-    .set({ ...state, updatedAt: Date.now() });
+    .set(payload);
 }
 
 export async function listStrategyStates(): Promise<Record<string, FundingStrategyState>> {

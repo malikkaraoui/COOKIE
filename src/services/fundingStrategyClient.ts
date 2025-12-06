@@ -23,6 +23,7 @@ export interface FundingStrategyState {
   estimatedFundingPnlUsd?: number;
   updatedAt?: number;
   source?: StrategySource;
+  ownerUid?: string;
 }
 
 export interface FundingStrategyStateMap {

@@ -35,6 +35,7 @@ import {
   saveInitialCapital, 
   subscribeInitialCapital 
 } from '../lib/database/userService'
+import { clearActiveFundingSignal } from '../lib/database/xpService'
 
 // Composant interne pour bouton de suppression (adapté mobile)
 function DeleteButton({ symbol, onRemove, isMobile }) {
@@ -1382,6 +1383,12 @@ export default function Page2() {
         message: `Annulations: ${canceled}, ordres de fermeture envoyés: ${closed}`,
         payload: response
       })
+
+      if (user?.uid) {
+        clearActiveFundingSignal(user.uid).catch((error) => {
+          console.warn('Impossible de désactiver le signal XP du bouillon:', error)
+        })
+      }
     } catch (error) {
       setCloseAllStatus({ state: 'error', message: error.message, payload: null })
     }

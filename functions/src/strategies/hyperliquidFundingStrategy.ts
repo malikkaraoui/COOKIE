@@ -28,6 +28,7 @@ export interface FundingStrategyState {
   entryMarkPx: number;
   entryTimeMs: number;
   estimatedFundingPnlUsd?: number;
+  ownerUid?: string;
   exitPnLPercentTarget: number;
   minFundingRate: number;
   isOpen: boolean;

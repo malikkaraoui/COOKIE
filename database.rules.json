@@ -25,6 +25,10 @@
         ".read": true,
         ".write": true
       }
+    },
+    "hyperliquidFundingStrategies": {
+      ".read": "auth != null",
+      ".write": false
     }
   }
 }

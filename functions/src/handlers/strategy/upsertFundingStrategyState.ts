@@ -40,6 +40,8 @@ function normalizeState(payload: any): FundingStrategyState {
     ? Number(payload.estimatedFundingPnlUsd)
     : undefined;
   const source = ALLOWED_SOURCES.includes(payload.source) ? payload.source : "manual";
+  const ownerUidRaw = typeof payload.ownerUid === "string" ? payload.ownerUid.trim() : "";
+  const ownerUid = ownerUidRaw && ownerUidRaw.length <= 200 ? ownerUidRaw : undefined;
 
   return {
     coin: coinRaw,
@@ -54,6 +56,7 @@ function normalizeState(payload: any): FundingStrategyState {
     isOpen,
     estimatedFundingPnlUsd,
     source,
+    ownerUid,
   };
 }
 

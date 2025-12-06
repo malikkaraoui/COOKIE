@@ -10,6 +10,7 @@ import {
   getSpotMid,
 } from "../services/hyperliquidFunding";
 import { upsertFundingStrategyState, FundingStrategyState } from "../services/fundingStrategyClient";
+import { setActiveFundingSignal } from "../lib/database/xpService";
 
 export const FUNDING_POSITIVE_THRESHOLD = 0.0001; // 0.01% / 8h
 export const FUNDING_NEGATIVE_THRESHOLD = -0.0001;
@@ -29,6 +30,7 @@ interface PriceTickMeta {
 }
 
 const MANUAL_LEVERAGE = 1;
+const LEVERAGE_DECREASE_ERROR = "decrease leverage";
 
 export interface OpenFundingTradeParams {
   coin: string;
@@ -226,8 +228,28 @@ export async function openFundingTrade(params: OpenFundingTradeParams): Promise<
     leverage,
     isCross: true,
   };
+  const basePayload = { orders } as Record<string, unknown>;
 
-  const response = await placeHyperliquidTestOrder({ orders, leverageConfig });
+  const sendOrders = async (payload: Record<string, unknown>) => {
+    return placeHyperliquidTestOrder(payload);
+  };
+
+  const shouldRetryWithoutLeverage = (error: any) => {
+    const message = typeof error?.message === "string" ? error.message.toLowerCase() : "";
+    return message.includes(LEVERAGE_DECREASE_ERROR);
+  };
+
+  let response;
+  try {
+    response = await sendOrders({ ...basePayload, leverageConfig });
+  } catch (error) {
+    if (shouldRetryWithoutLeverage(error)) {
+      console.warn("Hyperliquid refuse de réduire le levier : relance sans leverageConfig.", error);
+      response = await sendOrders(basePayload);
+    } else {
+      throw error;
+    }
+  }
   const statuses = (response?.result?.response?.data?.statuses ?? []) as RawOrderStatus[];
 
   const spotOrderStatus = includeSpotLeg ? statuses[0] : undefined;
@@ -251,7 +273,12 @@ export async function openFundingTrade(params: OpenFundingTradeParams): Promise<
     minFundingRate: isCollectShort ? customThreshold : -customThreshold,
     isOpen: true,
     source: "manual" as const,
+    ownerUid: user.uid,
   };
+
+  const tradeId = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `funding-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
   try {
     await upsertFundingStrategyState(manualState);
@@ -263,9 +290,15 @@ export async function openFundingTrade(params: OpenFundingTradeParams): Promise<
     );
   }
 
-  const tradeId = typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `funding-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  setActiveFundingSignal(user.uid, {
+    coin,
+    mode: manualState.mode,
+    tradeId,
+    entryTimeMs,
+    source: "manual",
+  }).catch((error) => {
+    console.warn("Impossible de taguer le bouillon actif pour l'XP:", error);
+  });
 
   saveFundingTrade({
     tradeId,

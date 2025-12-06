@@ -29,6 +29,16 @@ export default function BouillonDeLegumes() {
   const [marketLoading, setMarketLoading] = useState(false)
   const [marketError, setMarketError] = useState(null)
   const [snapshotRefreshToken, setSnapshotRefreshToken] = useState(0)
+  const orderedMarketSnapshot = useMemo(() => {
+    if (!Array.isArray(marketSnapshot)) {
+      return []
+    }
+    return [...marketSnapshot].sort((a, b) => {
+      const aRate = Number.isFinite(a?.fundingRate) ? a.fundingRate : 0
+      const bRate = Number.isFinite(b?.fundingRate) ? b.fundingRate : 0
+      return aRate - bRate
+    })
+  }, [marketSnapshot])
 
   const isPremium = useMemo(() => {
     const membership = profile?.membership
@@ -200,13 +210,13 @@ export default function BouillonDeLegumes() {
       return <div className="bouillon-alert bouillon-alert--error">{marketError}</div>
     }
 
-    if (!marketSnapshot.length) {
+    if (!orderedMarketSnapshot.length) {
       return <p className="bouillon-market-empty">Aucun marché disponible pour le moment.</p>
     }
 
     return (
       <div className="bouillon-token-grid">
-        {marketSnapshot.map((market) => {
+        {orderedMarketSnapshot.map((market) => {
           const descriptor = directionDescriptor(market.fundingRate)
           const fundingPct = (market.fundingRate * 100).toFixed(4)
           const eligible = descriptor.tone !== 'flat'
