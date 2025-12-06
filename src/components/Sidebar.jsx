@@ -10,7 +10,7 @@ import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
 import LoginSidebarButton from '../auth/LoginSidebarButton'
-import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
+import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
 
 // Styles Sidebar COMPACT, ce réglage permet le redimensionnement
 const SIDEBAR_COMPACT_WIDTH = 170
@@ -140,6 +140,11 @@ export default function Sidebar() {
       to: '/la-marmite', 
       label: 'La Marmite',
       icon: Soup
+    },
+    {
+      to: '/bouillon-de-legumes',
+      label: 'Bouillon de légumes',
+      icon: Sprout
     },
     // Lien Stripe visible uniquement pour les utilisateurs connectés
     ...(user ? [{

@@ -109,6 +109,12 @@ const {
   cancelBinanceOpenOrdersOnSymbol,
   cancelAllBinanceOpenOrders,
   closeAndDustBinancePositions,
+  watchHyperliquidFunding,
+  maybeOpenFundingPosition,
+  maybeCloseFundingPosition,
+  runFundingStrategyTick,
+  getFundingStrategyState,
+  upsertFundingStrategyState,
 } = require("./src/index");
 
 exports.placeTestOrder = placeTestOrder;
@@ -120,3 +126,9 @@ exports.listBinanceSpotBalances = listBinanceSpotBalances;
 exports.cancelBinanceOpenOrdersOnSymbol = cancelBinanceOpenOrdersOnSymbol;
 exports.cancelAllBinanceOpenOrders = cancelAllBinanceOpenOrders;
 exports.closeAndDustBinancePositions = closeAndDustBinancePositions;
+exports.watchHyperliquidFunding = watchHyperliquidFunding;
+exports.maybeOpenFundingPosition = maybeOpenFundingPosition;
+exports.maybeCloseFundingPosition = maybeCloseFundingPosition;
+exports.runFundingStrategyTick = runFundingStrategyTick;
+exports.getFundingStrategyState = getFundingStrategyState;
+exports.upsertFundingStrategyState = upsertFundingStrategyState;

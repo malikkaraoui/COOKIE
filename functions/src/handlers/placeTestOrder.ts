@@ -31,6 +31,14 @@ interface PlaceOrderRequestBody {
   price?: number | string;
   tif?: AllowedTif;
   reduceOnly?: boolean;
+  leverageConfig?: LeverageConfigPayload;
+}
+
+interface LeverageConfigPayload {
+  asset?: number;
+  symbol?: string;
+  leverage?: number;
+  isCross?: boolean;
 }
 
 type ExchangeOrderPayload = {
@@ -100,6 +108,68 @@ function normalizeTif(tif: IncomingOrder["tif"], index: number): AllowedTif {
   return tif;
 }
 
+function normalizeLeverageConfig(payload?: LeverageConfigPayload | null): LeverageConfigPayload | null {
+  if (!payload) {
+    return null;
+  }
+
+  const leverageValue = Number(payload.leverage);
+  if (!Number.isFinite(leverageValue) || leverageValue <= 0) {
+    throw new Error("leverageConfig.leverage doit être un nombre positif");
+  }
+
+  const leverageInt = Math.max(1, Math.floor(leverageValue));
+  const normalized: LeverageConfigPayload = {
+    leverage: leverageInt,
+    isCross: payload.isCross !== undefined ? Boolean(payload.isCross) : true,
+  };
+
+  if (typeof payload.asset === "number" && Number.isInteger(payload.asset) && payload.asset >= 0) {
+    normalized.asset = payload.asset;
+  }
+
+  if (payload.symbol) {
+    const symbol = payload.symbol.toUpperCase().trim();
+    if (!symbol) {
+      throw new Error("leverageConfig.symbol doit être non vide");
+    }
+    normalized.symbol = symbol;
+  }
+
+  if (normalized.asset == null && !normalized.symbol) {
+    throw new Error("Fournis 'asset' ou 'symbol' dans leverageConfig");
+  }
+
+  return normalized;
+}
+
+async function updateLeverageIfRequested(
+  leverageConfig: LeverageConfigPayload | null,
+  coinMap: Map<string, number> | null,
+): Promise<void> {
+  if (!leverageConfig) {
+    return;
+  }
+
+  let assetId = leverageConfig.asset;
+  if (assetId == null) {
+    const symbol = leverageConfig.symbol;
+    if (!symbol) {
+      throw new Error("Impossible de déterminer l'actif pour updateLeverage");
+    }
+    assetId = coinMap?.get(symbol);
+    if (assetId == null) {
+      throw new Error(`Actif ${symbol} introuvable pour updateLeverage`);
+    }
+  }
+
+  await exchangeClient.updateLeverage({
+    asset: assetId,
+    isCross: leverageConfig.isCross !== undefined ? Boolean(leverageConfig.isCross) : true,
+    leverage: leverageConfig.leverage ?? 1,
+  });
+}
+
 export const placeTestOrder = functions.https.onRequest(async (req, res) => {
   try {
     res.set("Access-Control-Allow-Origin", "*");
@@ -115,7 +185,9 @@ export const placeTestOrder = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    const ordersPayload = normalizeIncomingOrders(req.body as PlaceOrderRequestBody);
+    const rawBody = req.body as PlaceOrderRequestBody;
+    const ordersPayload = normalizeIncomingOrders(rawBody);
+    const leverageConfig = normalizeLeverageConfig(rawBody.leverageConfig);
 
     if (!ordersPayload.length) {
       res.status(400).json({
@@ -131,7 +203,8 @@ export const placeTestOrder = functions.https.onRequest(async (req, res) => {
       return;
     }
 
-    const needsSymbolResolution = ordersPayload.some((order) => order.asset == null);
+    const needsSymbolResolution = ordersPayload.some((order) => order.asset == null)
+      || Boolean(leverageConfig && leverageConfig.symbol && leverageConfig.asset == null);
     const coinMap = needsSymbolResolution ? await buildCoinToAssetMap() : null;
 
     const exchangeOrders: ExchangeOrderPayload[] = ordersPayload.map((order, index) => {
@@ -158,6 +231,8 @@ export const placeTestOrder = functions.https.onRequest(async (req, res) => {
         t: { limit: { tif } },
       };
     });
+
+    await updateLeverageIfRequested(leverageConfig, coinMap);
 
     const result = await exchangeClient.order({
       orders: exchangeOrders,

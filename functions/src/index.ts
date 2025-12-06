@@ -9,3 +9,8 @@ export {
 	cancelAllBinanceOpenOrders,
 	closeAndDustBinancePositions,
 } from "./handlers/binance/cancelOpenOrders";
+export { watchHyperliquidFunding } from "./strategies/hyperliquidFundingWatcher";
+export * from "./strategies/hyperliquidFundingStrategy";
+export { runFundingStrategyTick } from "./handlers/strategy/runFundingStrategyTick";
+export { getFundingStrategyState } from "./handlers/strategy/getFundingStrategyState";
+export { upsertFundingStrategyState } from "./handlers/strategy/upsertFundingStrategyState";

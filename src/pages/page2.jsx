@@ -13,6 +13,7 @@ import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../providers/MarketDataProvider'
+import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import { 
@@ -25,7 +26,6 @@ import {
   placeBinancePresetOrder,
   placeBinanceLargePresetOrder,
   fetchBinanceOpenOrders,
-  fetchBinanceSpotBalances,
   cancelAllBinanceOrders,
   closeAndDustBinancePositions,
   BINANCE_PRESET_ORDER
@@ -105,10 +105,6 @@ const BINANCE_MAX_ORDER_FORMS = 10
 const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
 const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
-const IMPORTANT_BINANCE_ASSETS = new Set([
-  'USDT','USDC','BUSD','TUSD','FDUSD','DAI','USDP','USDD','BTC','ETH','BNB','SOL','XRP','DOGE','TON','ADA','AVAX','TRX','DOT','MATIC','ATOM','ARB','OP','APT','SUI','LINK','UNI','PEPE','SHIB','INJ','TIA','SEI','JUP','RUNE','CAKE','LTC','BCH'
-])
-const BINANCE_STABLE_ASSETS = new Set(['USDT','USDC','BUSD','FDUSD','TUSD','USDP','DAI'])
 
 const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   acc[token.id.toUpperCase()] = token
@@ -411,11 +407,7 @@ export default function Page2() {
   const [binanceCancelStatus, setBinanceCancelStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceDustStatus, setBinanceDustStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceBatchStatus, setBinanceBatchStatus] = useState({ state: 'idle', message: '', payload: null })
-  const [binanceBalanceStatus, setBinanceBalanceStatus] = useState({ state: 'idle', message: '', payload: null })
-  const [binanceSpotBalances, setBinanceSpotBalances] = useState([])
-  const [binanceSpotSummary, setBinanceSpotSummary] = useState(null)
   const [binanceSymbolFiltersState, setBinanceSymbolFiltersState] = useState({})
-  const [showAllBinanceBalances, setShowAllBinanceBalances] = useState(false)
   const [showBinanceLogs, setShowBinanceLogs] = useState(false)
   const [binanceOpenOrders, setBinanceOpenOrders] = useState([])
   const [binanceRecentOrders, setBinanceRecentOrders] = useState([])
@@ -497,14 +489,16 @@ export default function Page2() {
   const tokensData = useMemo(() => {
     // Pour chaque token, on doit récupérer ses données selon sa source
     const data = selectedTokens.map(symbolWithSource => {
-      const [symbol, source] = symbolWithSource.includes(':')
+      const [symbol, rawSource] = symbolWithSource.includes(':')
         ? symbolWithSource.split(':')
         : [symbolWithSource, 'hyperliquid']
+      const source = (rawSource || 'hyperliquid').toLowerCase()
       
       // Récupérer données de marché depuis MarketDataContext
       // (qui contient maintenant Hyperliquid ET Binance)
       // Utiliser directement l'état 'tokens' pour que le useMemo réagisse
-      const marketData = (tokens && tokens[symbol]) || getToken(symbol)
+      const marketKey = buildMarketDataKey(symbol, source)
+      const marketData = (tokens && tokens[marketKey]) || getToken(symbol, source)
       
       // Récupérer config statique
       const config = getTokenConfig(symbol)
@@ -537,6 +531,7 @@ export default function Page2() {
         finalDeltaPct: tokenData.deltaPct,
         price: tokenData.price,
         prevDayPx: marketData?.prevDayPx,
+        marketDataKey: marketKey,
         marketDataSource: marketData?.source
       })
       
@@ -549,25 +544,36 @@ export default function Page2() {
   const tokenPriceMap = useMemo(() => {
     return tokensData.reduce((acc, token) => {
       const numericPrice = Number(token.price)
-      if (Number.isFinite(numericPrice)) {
+      if (!Number.isFinite(numericPrice)) {
+        return acc
+      }
+      const key = buildMarketDataKey(token.symbol, token.source)
+      if (key) {
+        acc[key] = numericPrice
+      }
+      if (token.source !== 'binance' || acc[token.symbol] == null) {
         acc[token.symbol] = numericPrice
       }
       return acc
     }, {})
   }, [tokensData])
 
-  const computeAutoLimitPrice = useCallback((symbol) => {
+  const computeAutoLimitPrice = useCallback((symbol, source = 'hyperliquid') => {
     if (!symbol) return ''
-    const lastPrice = tokenPriceMap?.[symbol]
+    const key = buildMarketDataKey(symbol, source)
+    const fallbackKey = source === 'hyperliquid' ? symbol : null
+    const lastPrice = tokenPriceMap?.[key] ?? (fallbackKey ? tokenPriceMap?.[fallbackKey] : tokenPriceMap?.[symbol])
     if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
       return ''
     }
     return quantizePrice(symbol, lastPrice)
   }, [tokenPriceMap])
 
-  const computeAutoSize = useCallback((symbol) => {
+  const computeAutoSize = useCallback((symbol, source = 'hyperliquid') => {
     if (!symbol) return DEFAULT_ORDER_SIZE
-    const lastPrice = tokenPriceMap?.[symbol]
+    const key = buildMarketDataKey(symbol, source)
+    const fallbackKey = source === 'hyperliquid' ? symbol : null
+    const lastPrice = tokenPriceMap?.[key] ?? (fallbackKey ? tokenPriceMap?.[fallbackKey] : tokenPriceMap?.[symbol])
     if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
       return DEFAULT_ORDER_SIZE
     }
@@ -584,7 +590,8 @@ export default function Page2() {
 
   const computeBinanceAutoSize = useCallback((symbol) => {
     if (!symbol) return DEFAULT_ORDER_SIZE
-    const lastPrice = tokenPriceMap?.[symbol]
+    const key = buildMarketDataKey(symbol, 'binance')
+    const lastPrice = tokenPriceMap?.[key] ?? tokenPriceMap?.[symbol]
     if (!Number.isFinite(lastPrice) || lastPrice <= 0) {
       return DEFAULT_ORDER_SIZE
     }
@@ -830,7 +837,7 @@ export default function Page2() {
               autoSize: true
             }
           }
-          const autoPrice = computeAutoLimitPrice(canonical) || ''
+          const autoPrice = computeAutoLimitPrice(canonical, 'binance') || ''
           const autoSize = toDisplayDecimalString(computeBinanceAutoSize(canonical))
           return {
             ...order,
@@ -907,8 +914,8 @@ export default function Page2() {
       if (prev.length >= BINANCE_MAX_ORDER_FORMS) {
         return prev
       }
-      const fallbackSymbol = binanceOrderableSymbols[prev.length % binanceOrderableSymbols.length] || binanceOrderableSymbols[0]
-      const autoPrice = computeAutoLimitPrice(fallbackSymbol) || ''
+        const fallbackSymbol = binanceOrderableSymbols[prev.length % binanceOrderableSymbols.length] || binanceOrderableSymbols[0]
+        const autoPrice = computeAutoLimitPrice(fallbackSymbol, 'binance') || ''
       const autoSize = toDisplayDecimalString(computeBinanceAutoSize(fallbackSymbol))
       return [
         ...prev,
@@ -974,7 +981,7 @@ export default function Page2() {
       return
     }
     const defaults = binanceOrderableSymbols.slice(0, 2).map((symbol) => {
-      const autoPrice = computeAutoLimitPrice(symbol) || ''
+      const autoPrice = computeAutoLimitPrice(symbol, 'binance') || ''
       const autoSize = toDisplayDecimalString(computeBinanceAutoSize(symbol))
       return {
         ...createBlankBinanceOrder(symbol),
@@ -1701,41 +1708,6 @@ export default function Page2() {
     })
   }
 
-  const refreshBinanceSpotBalances = useCallback(async (trigger = 'auto') => {
-    setBinanceBalanceStatus((prev) => ({
-      state: 'loading',
-      message: trigger === 'manual' ? 'Rafraîchissement manuel…' : 'Rafraîchissement auto…',
-      payload: prev.payload
-    }))
-    try {
-      const response = await fetchBinanceSpotBalances()
-      setBinanceSpotBalances(Array.isArray(response?.balances) ? response.balances : [])
-      setBinanceSpotSummary(response?.summary || null)
-      const fetchedAt = response?.fetchedAt ? new Date(response.fetchedAt) : new Date()
-      setBinanceBalanceStatus({
-        state: 'success',
-        message: `Mise à jour à ${fetchedAt.toLocaleTimeString('fr-FR', { hour12: false })}`,
-        payload: response
-      })
-    } catch (error) {
-      setBinanceBalanceStatus({
-        state: 'error',
-        message: error instanceof Error ? error.message : 'Erreur inconnue',
-        payload: null
-      })
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshBinanceSpotBalances('auto')
-    const interval = setInterval(() => {
-      refreshBinanceSpotBalances('auto')
-    }, 10000)
-    return () => {
-      clearInterval(interval)
-    }
-  }, [refreshBinanceSpotBalances])
-
   const statusColorMap = {
     idle: '#94a3b8',
     loading: '#fbbf24',
@@ -1752,31 +1724,11 @@ export default function Page2() {
   const binanceCancelStatusColor = statusColorMap[binanceCancelStatus.state]
   const binanceDustStatusColor = statusColorMap[binanceDustStatus.state]
   const binanceBatchStatusColor = statusColorMap[binanceBatchStatus.state]
-  const binanceBalancesStatusColor = statusColorMap[binanceBalanceStatus.state]
   const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
   const openPositionsList = openOrdersStatus.payload?.openPositions ?? []
   const binanceOpenOrdersList = Array.isArray(binanceOpenOrders) ? binanceOpenOrders : []
   const binanceRecentOrdersList = Array.isArray(binanceRecentOrders) ? binanceRecentOrders : []
-  const binanceSpotBalancesList = Array.isArray(binanceSpotBalances) ? binanceSpotBalances : []
-  const binanceSpotSummaryData = binanceSpotSummary && typeof binanceSpotSummary === 'object' ? binanceSpotSummary : null
-  const binanceBalancesLastUpdate = binanceBalanceStatus.payload?.fetchedAt
-    ? new Date(binanceBalanceStatus.payload.fetchedAt).toLocaleString('fr-FR', { hour12: false })
-    : null
   const binanceFiltersCacheRef = useRef({})
-  const importantBinanceBalances = useMemo(() => {
-    return binanceSpotBalancesList.filter((balance) => IMPORTANT_BINANCE_ASSETS.has(balance.asset))
-  }, [binanceSpotBalancesList])
-  const displayedBinanceBalances = showAllBinanceBalances ? binanceSpotBalancesList : importantBinanceBalances
-  const hiddenBalancesCount = binanceSpotBalancesList.length - displayedBinanceBalances.length
-  const stableBalanceTotal = useMemo(() => {
-    return binanceSpotBalancesList.reduce((acc, balance) => {
-      if (!BINANCE_STABLE_ASSETS.has(balance.asset)) {
-        return acc
-      }
-      const numeric = Number(balance.total)
-      return Number.isFinite(numeric) ? acc + numeric : acc
-    }, 0)
-  }, [binanceSpotBalancesList])
 
   const formatNumericString = (value, options = {}) => {
     const {
@@ -1832,258 +1784,6 @@ export default function Page2() {
         </h1>
         <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
           Simulateur de portfolio • Optimisez vos allocations
-        </p>
-      </div>
-
-      {/* Portefeuille Binance Spot */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #030b17 0%, #010510 100%)',
-          borderRadius: '16px',
-          padding: '20px',
-          marginBottom: '24px',
-          border: '1px solid #0f1d2f',
-          boxShadow: '0 12px 25px rgba(1, 5, 16, 0.65)'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-            flexWrap: 'wrap'
-          }}
-        >
-          <div>
-            <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Portefeuille Binance (spot)</p>
-            <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
-              Rafraîchissement automatique toutes les 10&nbsp;s via Firebase Functions. {binanceBalanceStatus.message || 'Synchronisation en cours…'}
-            </p>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '8px 14px',
-                borderRadius: '999px',
-                border: '1px solid #1e293b',
-                background: '#010814'
-              }}
-            >
-              <span
-                style={{
-                  width: '9px',
-                  height: '9px',
-                  borderRadius: '999px',
-                  background: binanceBalancesStatusColor
-                }}
-              ></span>
-              <span style={{ color: '#cbd5f5', fontSize: '13px', fontWeight: 600 }}>Auto 10s</span>
-            </div>
-            <button
-              onClick={() => refreshBinanceSpotBalances('manual')}
-              disabled={binanceBalanceStatus.state === 'loading'}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #1e293b',
-                background:
-                  binanceBalanceStatus.state === 'loading'
-                    ? '#0f172a'
-                    : '#081227',
-                color: '#f8fafc',
-                fontWeight: 600,
-                cursor: binanceBalanceStatus.state === 'loading' ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {binanceBalanceStatus.state === 'loading' ? 'Sync…' : 'Rafraîchir'}
-            </button>
-          </div>
-        </div>
-
-        {binanceSpotSummaryData && (
-          <div
-            style={{
-              marginTop: '14px',
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: '10px'
-            }}
-          >
-            {[
-              {
-                label: 'Actifs > 0',
-                value: binanceSpotSummaryData.assets ?? '—'
-              },
-              {
-                label: 'Stables (≈USD)',
-                value: `${formatNumericString(stableBalanceTotal || 0, { maximumFractionDigits: 2, limitHighValues: true })} USDT`
-              },
-              {
-                label: 'Trading',
-                value:
-                  binanceSpotSummaryData.canTrade === true
-                    ? 'Autorisé'
-                    : binanceSpotSummaryData.canTrade === false
-                      ? 'Bloqué'
-                      : '—'
-              },
-              {
-                label: 'Dépôts',
-                value:
-                  binanceSpotSummaryData.canDeposit === true
-                    ? 'OK'
-                    : binanceSpotSummaryData.canDeposit === false
-                      ? 'Bloqués'
-                      : '—'
-              },
-              {
-                label: 'Retraits',
-                value:
-                  binanceSpotSummaryData.canWithdraw === true
-                    ? 'OK'
-                    : binanceSpotSummaryData.canWithdraw === false
-                      ? 'Bloqués'
-                      : '—'
-              }
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  border: '1px solid #1d2a3a',
-                  borderRadius: '12px',
-                  padding: '12px',
-                  background: '#020a16'
-                }}
-              >
-                <p style={{ color: '#64748b', margin: 0, fontSize: '12px', letterSpacing: '0.03em' }}>{item.label}</p>
-                <p style={{ color: '#e2e8f0', margin: '6px 0 0', fontWeight: 600 }}>{item.value}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {displayedBinanceBalances.length > 0 ? (
-          <>
-            <div
-              style={{
-                marginTop: '16px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '12px'
-              }}
-            >
-              {displayedBinanceBalances.map((balance) => (
-                <div
-                  key={balance.asset}
-                  style={{
-                    border: '1px solid #152337',
-                    borderRadius: '12px',
-                    padding: '14px',
-                    background: '#010915'
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      justifyContent: 'space-between',
-                      gap: '10px'
-                    }}
-                  >
-                    <p style={{ color: '#f8fafc', margin: 0, fontWeight: 600 }}>{balance.asset}</p>
-                    <span
-                      style={{
-                        color: '#38bdf8',
-                        fontSize: '13px',
-                        fontWeight: 700
-                      }}
-                    >
-                      {formatNumericString(balance.total, {
-                        maximumFractionDigits: 8,
-                        preserveTinyValues: true
-                      })}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                      gap: '10px',
-                      marginTop: '12px'
-                    }}
-                  >
-                    {[{ label: 'Libre', value: balance.free }, { label: 'Verrouillé', value: balance.locked }].map((field) => (
-                      <div key={`${balance.asset}-${field.label}`}>
-                        <p style={{ color: '#64748b', margin: 0, fontSize: '12px' }}>{field.label}</p>
-                        <p style={{ color: '#e2e8f0', margin: '4px 0 0', fontWeight: 600 }}>
-                          {formatNumericString(field.value, {
-                            maximumFractionDigits: 8,
-                            preserveTinyValues: true
-                          })}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {(hiddenBalancesCount > 0 || showAllBinanceBalances) && (
-              <div
-                style={{
-                  marginTop: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: '10px'
-                }}
-              >
-                <p style={{ color: '#94a3b8', margin: 0, fontSize: '13px' }}>
-                  {showAllBinanceBalances
-                    ? 'Tous les actifs sont affichés.'
-                    : `+ ${hiddenBalancesCount} autres devise(s) masquée(s).`}
-                </p>
-                <button
-                  onClick={() => setShowAllBinanceBalances((prev) => !prev)}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: '10px',
-                    border: '1px solid #1e293b',
-                    background: '#020a16',
-                    color: '#e5e7eb',
-                    fontWeight: 600
-                  }}
-                >
-                  {showAllBinanceBalances
-                    ? 'Masquer les devises secondaires'
-                    : `Afficher tout (${binanceSpotBalancesList.length})`}
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <div
-            style={{
-              marginTop: '16px',
-              border: '1px dashed #1d2a3a',
-              borderRadius: '12px',
-              padding: '18px',
-              background: 'rgba(1, 10, 22, 0.4)'
-            }}
-          >
-            <p style={{ color: '#94a3b8', margin: 0 }}>
-              Aucun solde détecté pour le moment. Lance un test de dépôt/ordre ou réessaie le rafraîchissement manuel.
-            </p>
-          </div>
-        )}
-
-        <p style={{ color: '#475569', marginTop: '12px', fontSize: '12px' }}>
-          Dernière synchronisation : {binanceBalancesLastUpdate || '—'}
         </p>
       </div>
 
@@ -2367,9 +2067,12 @@ export default function Page2() {
               const safeSymbol = isBinanceSymbolAllowed(order.symbol) ? order.symbol : ''
               const pairSymbol = safeSymbol ? getBinancePairSymbol(safeSymbol) : null
               const displayedPrice = order.autoPrice && safeSymbol
-                ? computeAutoLimitPrice(safeSymbol) || ''
+                ? computeAutoLimitPrice(safeSymbol, 'binance') || ''
                 : order.price
-              const livePriceNumber = safeSymbol ? tokenPriceMap?.[safeSymbol] : null
+              const binancePriceKey = safeSymbol ? buildMarketDataKey(safeSymbol, 'binance') : ''
+              const livePriceNumber = safeSymbol
+                ? tokenPriceMap?.[binancePriceKey] ?? tokenPriceMap?.[safeSymbol]
+                : null
               const livePriceDisplay = Number.isFinite(livePriceNumber)
                 ? `${formatNumericString(livePriceNumber, {
                   maximumFractionDigits: getPriceDecimals(safeSymbol),

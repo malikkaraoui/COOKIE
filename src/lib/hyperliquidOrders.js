@@ -1,8 +1,38 @@
-const PROD_FUNCTIONS_BASE_URL =
+const DEFAULT_FUNCTIONS_BASE_URL =
   "https://us-central1-cookie1-b3592.cloudfunctions.net"
-const PLACE_TEST_ORDER_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/placeTestOrder`
-const LIST_OPEN_ORDERS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/listOpenOrders`
-const CLOSE_ALL_POSITIONS_ENDPOINT = `${PROD_FUNCTIONS_BASE_URL}/closeAllPositions`
+const DEFAULT_EMULATOR_URL = "http://127.0.0.1:5001/cookie1-b3592/us-central1"
+
+function resolveEnv(key) {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env && key in import.meta.env) {
+      return import.meta.env[key]
+    }
+  } catch {
+    // ignore
+  }
+  const procEnv = typeof globalThis !== 'undefined' ? globalThis.process?.env : undefined
+  if (procEnv && key in procEnv) {
+    return procEnv[key]
+  }
+  return undefined
+}
+
+export function getFunctionsBaseUrl() {
+  const useEmulator = resolveEnv('VITE_USE_FUNCTIONS_EMULATOR') === 'true'
+  if (useEmulator) {
+    return (
+      resolveEnv('VITE_FUNCTIONS_EMULATOR_URL') ||
+      DEFAULT_EMULATOR_URL
+    )
+  }
+  return resolveEnv('VITE_FUNCTIONS_BASE_URL') || DEFAULT_FUNCTIONS_BASE_URL
+}
+
+const FUNCTIONS_BASE_URL = getFunctionsBaseUrl()
+
+const PLACE_TEST_ORDER_ENDPOINT = `${FUNCTIONS_BASE_URL}/placeTestOrder`
+const LIST_OPEN_ORDERS_ENDPOINT = `${FUNCTIONS_BASE_URL}/listOpenOrders`
+const CLOSE_ALL_POSITIONS_ENDPOINT = `${FUNCTIONS_BASE_URL}/closeAllPositions`
 
 const ALLOWED_SIDES = ['buy', 'sell']
 
@@ -69,8 +99,59 @@ function normalizeOrdersPayload(payload) {
   }
 }
 
+function pickLeveragePayload(rawPayload) {
+  if (!rawPayload || typeof rawPayload !== 'object') {
+    return undefined
+  }
+  if (rawPayload.leverageConfig) {
+    return rawPayload.leverageConfig
+  }
+  if (rawPayload.perpLeverage) {
+    return rawPayload.perpLeverage
+  }
+  return undefined
+}
+
+function normalizeLeverageConfig(rawConfig) {
+  if (!rawConfig) {
+    return undefined
+  }
+
+  const leverageValue = Number(rawConfig.leverage ?? rawConfig.value ?? rawConfig.amount)
+  if (!Number.isFinite(leverageValue) || leverageValue <= 0) {
+    throw new Error('leverage doit être un nombre positif')
+  }
+
+  const normalized = {
+    leverage: Math.max(1, Math.floor(leverageValue)),
+    isCross: rawConfig.isCross !== undefined ? Boolean(rawConfig.isCross) : true
+  }
+
+  if (typeof rawConfig.asset === 'number' && Number.isInteger(rawConfig.asset) && rawConfig.asset >= 0) {
+    normalized.asset = rawConfig.asset
+  }
+
+  if (rawConfig.symbol) {
+    const symbol = String(rawConfig.symbol).toUpperCase().trim()
+    if (!symbol) {
+      throw new Error('leverageConfig.symbol doit être non vide')
+    }
+    normalized.symbol = symbol
+  }
+
+  if (normalized.asset == null && !normalized.symbol) {
+    throw new Error('Fournis "asset" ou "symbol" pour configurer le levier')
+  }
+
+  return normalized
+}
+
 export async function placeHyperliquidTestOrder(payload) {
-  const body = normalizeOrdersPayload(payload)
+  const ordersPayload = normalizeOrdersPayload(payload)
+  const leveragePayload = normalizeLeverageConfig(pickLeveragePayload(payload))
+  const body = leveragePayload
+    ? { ...ordersPayload, leverageConfig: leveragePayload }
+    : ordersPayload
 
   let response
   try {

@@ -11,6 +11,7 @@ Ce document reflète **les routes réellement déclarées** dans `src/components
 | `/epicerie-fine` | `pages/page1.jsx` | Vue principale « Épicerie fine » (sélection & drag Hyperliquid) | Accent retiré pour compatibilité URL |
 | `/ma-cuisine` | `pages/page2.jsx` | Formulaire de construction d’ordre Hyperliquid | Drop zone principale |
 | `/la-marmite` | `pages/LaMarmite.jsx` | Page communautaire (votes/recettes) | Contenu social |
+| `/bouillon-de-legumes` | `pages/BouillonDeLegumes.jsx` | Atelier premium de funding Hyperliquid (« Bouillon de légumes ») | Visible uniquement pour membres Premium (garde-fous côté page) |
 | `/profile` | `pages/ProfilePage.jsx` | Profil utilisateur Google | Déjà en kebab-case |
 | `/stripe` | `pages/StripePage.jsx` | Lancement du checkout Stripe Premium | Réservé users loggés |
 | `/stripe-success` | `pages/StripeSuccessPage.jsx` | Callback Stripe succès | Invariant (Stripe docs) |
@@ -27,6 +28,7 @@ Les anciennes URLs restent fonctionnelles grâce à des `<Navigate replace />` d
 | `/ÉpicerieFine` | `/epicerie-fine` |
 | `/MaCuisine` | `/ma-cuisine` |
 | `/LaMarmite` | `/la-marmite` |
+| `/BouillonDeLegumes` | `/bouillon-de-legumes` |
 | `/Stripe` | `/stripe` |
 | `/StripeSuccess` | `/stripe-success` |
 | `/StripeCancel` | `/stripe-cancel` |
