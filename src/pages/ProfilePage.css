@@ -186,3 +186,22 @@
   background: #f8d7da;
   border-radius: 8px;
 }
+
+.profile-xp-section {
+  margin-top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-xp-section h3 {
+  margin: 0;
+  font-size: 20px;
+  color: #1a1a1a;
+}
+
+.profile-xp-section p {
+  margin: 0;
+  font-size: 14px;
+  color: #6f5a72;
+}

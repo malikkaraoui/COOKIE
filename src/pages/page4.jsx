@@ -29,7 +29,7 @@ function BinanceTokenCard({ tokenId, isMobile, onAddToken }) {
     // Memes
     DOGE: '#C3A634', SHIB: '#FFA409', PEPE: '#3D9970',
     // DeFi
-    LINK: '#2A5ADA', DOT: '#E6007A', MATIC: '#8247E5',
+    LINK: '#2A5ADA', DOT: '#E6007A', POL: '#8247E5',
     UNI: '#FF007A', RUNE: '#00CCAB', INJ: '#00F2FE', ATOM: '#2E3148',
     // L1/L2 récents
     SUI: '#4DA2FF', APT: '#00D4AA', ARB: '#28A0F0',

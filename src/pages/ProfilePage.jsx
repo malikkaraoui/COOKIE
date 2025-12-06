@@ -6,6 +6,7 @@ import { useUserProfile } from '../hooks/useUserProfile'
 import { useAvatar } from '../hooks/useAvatar'
 import { calculateAge } from '../lib/database/userService'
 import './ProfilePage.css'
+import XpProgressBar from '../components/XpProgressBar'
 
 export default function ProfilePage() {
   const { user } = useAuth()
@@ -126,6 +127,12 @@ export default function ProfilePage() {
             </button>
           </form>
         )}
+
+        <div className="profile-xp-section">
+          <h3>Progression COOKIE</h3>
+          <p>Retrouve ici ta jauge personnalisée et les missions du jour.</p>
+          <XpProgressBar variant="embedded" />
+        </div>
       </div>
     </div>
   )

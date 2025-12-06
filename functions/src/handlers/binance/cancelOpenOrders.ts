@@ -18,7 +18,7 @@ const CLOSEABLE_BASE_ASSETS = new Set([
   "PEPE",
   "LINK",
   "DOT",
-  "MATIC",
+  "POL",
   "UNI",
   "RUNE",
   "INJ",

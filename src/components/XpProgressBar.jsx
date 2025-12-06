@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Circle, Loader2, Sparkles } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Circle, Loader2, Sparkles } from 'lucide-react'
 import { useXpProgress } from '../hooks/useXpProgress'
 
-export default function XpProgressBar() {
+export default function XpProgressBar({ variant = 'default' }) {
   const {
     tasks,
     earnedXp,
@@ -35,10 +35,10 @@ export default function XpProgressBar() {
     return () => media.removeListener?.(syncMedia)
   }, [])
 
-  const cardsVisible = forceCardsVisible || isCardsOpen
+  const cardsVisible = variant === 'embedded' ? true : (forceCardsVisible || isCardsOpen)
 
   const handleBlur = (event) => {
-    if (forceCardsVisible) return
+    if (forceCardsVisible || variant === 'embedded') return
     if (!event.currentTarget.contains(event.relatedTarget)) {
       setIsCardsOpen(false)
     }
@@ -46,26 +46,38 @@ export default function XpProgressBar() {
 
   const levelNumber = currentLevel?.index !== undefined ? currentLevel.index + 1 : 1
   const totalLevels = 10
-  const hoverHint = isAuthenticated ? ' Survole la jauge pour afficher les missions.' : ''
-  const subtitle = !isAuthenticated
+  const progressMessage = !isAuthenticated
     ? 'Connecte-toi pour débloquer les missions quotidiennes.'
     : loading
       ? 'Sync automatique en cours…'
       : missingXp <= 0
-        ? `Tu as atteint le dernier palier de la saison.${hoverHint}`
-        : `Encore ${missingXp} XP avant ${nextLevel.label}.${hoverHint}`
+        ? 'Tu as atteint le dernier palier de la saison.'
+        : `Encore ${missingXp} XP avant ${nextLevel.label}.`
+
+  const interactionHint = isAuthenticated
+    ? 'Survole ou clique pour afficher les missions.'
+    : 'Missions verrouillées tant que tu es déconnecté.'
+
+  const pointerPosition = Number.isFinite(progressPercent)
+    ? Math.min(Math.max(progressPercent, 0), 100)
+    : 0
+
+  const bannerClassName = ['xp-banner']
+  if (variant === 'embedded') {
+    bannerClassName.push('xp-banner--embedded')
+  }
 
   return (
     <div
-      className="xp-banner"
+      className={bannerClassName.join(' ')}
       role="region"
       aria-label="Progression des missions COOKIE"
       aria-busy={loading}
       aria-expanded={cardsVisible}
       tabIndex={0}
-      onMouseEnter={() => setIsCardsOpen(true)}
-      onMouseLeave={() => setIsCardsOpen(false)}
-      onFocus={() => setIsCardsOpen(true)}
+      onMouseEnter={() => variant !== 'embedded' && setIsCardsOpen(true)}
+      onMouseLeave={() => variant !== 'embedded' && setIsCardsOpen(false)}
+      onFocus={() => variant !== 'embedded' && setIsCardsOpen(true)}
       onBlur={handleBlur}
     >
       <div className="xp-banner-head">
@@ -86,18 +98,27 @@ export default function XpProgressBar() {
         </div>
       </div>
 
-      <div
-        className="xp-banner-track"
-        role="progressbar"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={progressPercent}
-        aria-label="Progression vers le prochain niveau"
-      >
-        <div className="xp-banner-fill" style={{ width: `${progressPercent}%` }} />
-      </div>
+      <div className="xp-banner-progress">
+        <div
+          className="xp-banner-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progressPercent}
+          aria-label="Progression vers le prochain niveau"
+        >
+          <div className="xp-banner-fill" style={{ width: `${progressPercent}%` }} />
+        </div>
 
-      <p className="xp-banner-subtitle">{subtitle}</p>
+        <div
+          className="xp-banner-pointer"
+          style={{ left: `${pointerPosition}%` }}
+          aria-live="polite"
+        >
+          <span className="xp-banner-pointer-icon" aria-hidden="true" />
+          <span className="xp-banner-pointer-text">{progressMessage}</span>
+        </div>
+      </div>
 
       <ul
         className={`xp-banner-tasklist ${cardsVisible ? 'is-visible' : ''}`}
@@ -116,6 +137,13 @@ export default function XpProgressBar() {
           </li>
         ))}
       </ul>
+
+      {isAuthenticated && (
+        <div className="xp-banner-disclosure" aria-hidden={!isAuthenticated}>
+          <ChevronDown size={16} />
+          <span>{interactionHint}</span>
+        </div>
+      )}
 
       {error && <p className="xp-banner-error">{error}</p>}
     </div>

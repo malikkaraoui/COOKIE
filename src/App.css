@@ -55,31 +55,40 @@ body {
 /* XP Banner collée sous la topbar */
 .xp-banner {
   position: relative;
-  background: linear-gradient(90deg, rgba(15, 23, 42, 0.85), rgba(8, 47, 73, 0.85));
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
-  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.45);
-  padding: 12px 24px 16px;
-  margin-bottom: 8px;
+  background: linear-gradient(120deg, rgba(15, 23, 42, 0.9), rgba(2, 44, 78, 0.88));
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(2, 6, 23, 0.28);
+  padding: 6px 20px 10px;
+  margin: 0 0 6px;
   color: #e2e8f0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   flex-shrink: 0;
   overflow: visible;
+  width: 100%;
+}
+
+.xp-banner--embedded {
+  width: 100%;
+  max-width: none;
+  margin: 32px 0 0;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.08);
 }
 
 .xp-banner-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 8px;
 }
 
 .xp-banner-title {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 0.95rem;
+  gap: 10px;
+  font-size: 0.8rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: rgba(226, 232, 240, 0.8);
@@ -87,7 +96,7 @@ body {
 
 .xp-banner-title strong {
   display: block;
-  font-size: 1.15rem;
+  font-size: 1rem;
   color: #fef9c3;
 }
 
@@ -95,15 +104,15 @@ body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 4px;
-  font-size: 0.8rem;
+  gap: 1px;
+  font-size: 0.7rem;
   color: rgba(226, 232, 240, 0.8);
 }
 
 .xp-banner-pill {
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
-  padding: 4px 12px;
+  padding: 2px 8px;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -117,9 +126,14 @@ body {
   font-size: 0.78rem;
 }
 
+.xp-banner-progress {
+  position: relative;
+  padding: 8px 0 20px;
+}
+
 .xp-banner-track {
   width: 100%;
-  height: 10px;
+  height: 4px;
   border-radius: 999px;
   background: rgba(15, 23, 42, 0.65);
   border: 1px solid rgba(148, 163, 184, 0.15);
@@ -133,10 +147,37 @@ body {
   transition: width 0.6s ease;
 }
 
-.xp-banner-subtitle {
-  margin: 0;
-  font-size: 0.9rem;
-  color: rgba(226, 232, 240, 0.8);
+.xp-banner-pointer {
+  position: absolute;
+  top: 0;
+  transform: translate(-50%, -80%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  min-width: 100px;
+  max-width: 200px;
+}
+
+.xp-banner-pointer-icon {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 8px solid #fef3c7;
+  filter: drop-shadow(0 2px 4px rgba(2, 6, 23, 0.35));
+}
+
+.xp-banner-pointer-text {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  color: #f1f5f9;
+  text-align: center;
+  white-space: normal;
 }
 
 .xp-banner-tasklist {
@@ -147,9 +188,9 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
   position: absolute;
-  left: 16px;
-  right: 16px;
-  top: calc(100% - 8px);
+  left: 12px;
+  right: 12px;
+  top: calc(100% - 10px);
   background: rgba(15, 23, 42, 0.96);
   border: 1px solid rgba(148, 163, 184, 0.25);
   box-shadow: 0 18px 35px rgba(2, 6, 23, 0.45);
@@ -196,6 +237,20 @@ body {
 .xp-banner-tasklist li.is-complete .xp-task-icon {
   background: rgba(34, 197, 94, 0.2);
   color: #22c55e;
+}
+
+.xp-banner-disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: rgba(226, 232, 240, 0.8);
+  margin-top: -12px;
+}
+
+.xp-banner-disclosure svg {
+  color: #facc15;
 }
 
 .xp-task-copy {
