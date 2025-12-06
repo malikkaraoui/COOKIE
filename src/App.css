@@ -1238,6 +1238,164 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* =============================
+   Panier flottant Ma cuisine
+   ============================= */
+.floating-basket {
+  position: fixed;
+  right: clamp(16px, 3vw, 44px);
+  bottom: clamp(16px, 4vw, 56px);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px 14px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(248, 250, 252, 0.25);
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(16px);
+  color: #f8fafc;
+  cursor: pointer;
+  box-shadow: 0 25px 45px rgba(2, 6, 23, 0.4);
+  z-index: 150;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+  isolation: isolate;
+}
+
+.floating-basket::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(244, 114, 182, 0.45), rgba(250, 204, 21, 0.35));
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.25s ease;
+}
+
+.floating-basket--filled::after {
+  opacity: 1;
+}
+
+.floating-basket--empty {
+  opacity: 0.85;
+}
+
+.floating-basket:hover {
+  transform: translateY(-4px) scale(1.015);
+  box-shadow: 0 30px 55px rgba(2, 6, 23, 0.5);
+}
+
+.floating-basket:focus-visible {
+  outline: 3px solid rgba(59, 130, 246, 0.7);
+  outline-offset: 2px;
+}
+
+.floating-basket__icon {
+  color: #f9a8d4;
+  filter: drop-shadow(0 6px 16px rgba(248, 113, 113, 0.35));
+}
+
+.floating-basket--filled .floating-basket__icon {
+  color: #facc15;
+  filter: drop-shadow(0 6px 16px rgba(250, 204, 21, 0.4));
+}
+
+.floating-basket__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+  max-width: 180px;
+}
+
+.floating-basket__label {
+  font-size: 0.78rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(248, 250, 252, 0.85);
+  font-weight: 700;
+}
+
+.floating-basket__preview {
+  font-size: 0.78rem;
+  color: rgba(226, 232, 240, 0.8);
+  white-space: nowrap;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.floating-basket__counter {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.floating-basket__badge {
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f472b6, #fb7185);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 6px 14px rgba(248, 113, 113, 0.4);
+}
+
+.floating-basket--filled .floating-basket__badge {
+  background: linear-gradient(135deg, #f97316, #facc15);
+}
+
+.floating-basket__capacity {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.85);
+  text-shadow: 0 2px 6px rgba(2, 6, 23, 0.5);
+}
+
+@keyframes basketFloat {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
+}
+
+.floating-basket {
+  animation: basketFloat 6s ease-in-out infinite;
+}
+
+@media (max-width: 767px) {
+  .floating-basket {
+    right: 16px;
+    bottom: 16px;
+    padding: 12px 16px 12px 14px;
+    gap: 10px;
+  }
+
+  .floating-basket__meta {
+    max-width: 140px;
+  }
+
+  .floating-basket__label {
+    letter-spacing: 0.15em;
+  }
+
+  .floating-basket__preview {
+    font-size: 0.72rem;
+  }
+}
+
 /* ====================================
    MOBILE RESPONSIVE
    ==================================== */
