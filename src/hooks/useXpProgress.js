@@ -20,6 +20,13 @@ const XP_TASKS = [
     accessor: (state) => Boolean(state.wallet?.connected),
   },
   {
+    id: 'premium_unlock',
+    label: 'Mode Chef actif',
+    description: 'Active COOKIE Premium via Stripe pour débloquer les recettes avancées.',
+    points: 200,
+    accessor: (state) => Boolean(state.membership?.active && state.membership?.tier === 'premium'),
+  },
+  {
     id: 'community_vote',
     label: 'Question journalière',
     description: 'Réponds au débat quotidien de la Marmite.',
@@ -48,6 +55,7 @@ const DEFAULT_STATE = {
   selectedTokensCount: 0,
   activeFundingCoins: [],
   xpSignalFunding: null,
+  membership: null,
 }
 
 const getDayKey = () => new Date().toISOString().split('T')[0]
@@ -94,6 +102,7 @@ export function useXpProgress() {
       wallet: false,
       funding: false,
       xpFunding: false,
+      membership: false,
     }
 
     const updateLoaded = (key) => {
@@ -172,6 +181,17 @@ export function useXpProgress() {
         updateLoaded('xpFunding')
       }, () => {
         updateLoaded('xpFunding')
+      })
+    )
+
+    const membershipRef = ref(db, `users/${user.uid}/membership`)
+    unsubscribers.push(
+      onValue(membershipRef, (snapshot) => {
+        setSignals((prev) => ({ ...prev, membership: snapshot.exists() ? snapshot.val() : null }))
+        updateLoaded('membership')
+      }, (err) => {
+        console.warn('Membership premium indisponible:', err)
+        updateLoaded('membership')
       })
     )
 
