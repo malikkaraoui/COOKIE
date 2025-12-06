@@ -53,7 +53,6 @@ const DEFAULT_STATE = {
   vote: null,
   wallet: { connected: false },
   selectedTokensCount: 0,
-  activeFundingCoins: [],
   xpSignalFunding: null,
   membership: null,
 }
@@ -100,7 +99,6 @@ export function useXpProgress() {
       vote: false,
       tokens: false,
       wallet: false,
-      funding: false,
       xpFunding: false,
       membership: false,
     }
@@ -157,23 +155,6 @@ export function useXpProgress() {
       })
     )
 
-    const hyperliquidRef = ref(db, 'hyperliquidFundingStrategies')
-    unsubscribers.push(
-      onValue(hyperliquidRef, (snapshot) => {
-        const value = snapshot.val()
-        const ownedCoins = Object.values(value || {})
-          .filter((entry) => entry?.ownerUid === user.uid && entry?.isOpen)
-          .map((entry) => entry.coin)
-          .filter(Boolean)
-        setSignals((prev) => ({ ...prev, activeFundingCoins: ownedCoins }))
-        updateLoaded('funding')
-      }, (err) => {
-        console.warn('Stratégies funding indisponibles:', err)
-        setError('Impossible de lire les bouillons actifs en base.')
-        updateLoaded('funding')
-      })
-    )
-
     const xpFundingRef = ref(db, `users/${user.uid}/xpSignals/activeFunding`)
     unsubscribers.push(
       onValue(xpFundingRef, (snapshot) => {
@@ -213,11 +194,8 @@ export function useXpProgress() {
     if (!user?.uid) {
       return false
     }
-    if (signals.activeFundingCoins.length > 0) {
-      return true
-    }
     return Boolean(signals.xpSignalFunding?.isOpen)
-  }, [signals.activeFundingCoins, signals.xpSignalFunding, user?.uid])
+  }, [signals.xpSignalFunding, user?.uid])
 
   const enrichedSignals = useMemo(() => ({
     ...signals,
