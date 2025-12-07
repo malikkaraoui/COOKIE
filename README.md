@@ -228,6 +228,26 @@ npm run lint             # Linter le code
 
 ---
 
+## 🔁 Versioning automatique
+
+- Chaque commit déclenche automatiquement `npm run bump:version` via un hook Husky (`pre-commit`).
+- Par défaut, on incrémente le **patch** (`0.0.X`). Le script met à jour `package.json` **et** `src/config/version.ts` (avec timestamp ISO).
+- Les fichiers modifiés sont automatiquement ajoutés au commit.
+
+### 🎚️ Changer le niveau d'incrément
+
+Besoin d'un `minor` ou `major` ? Lance la commande de commit avec la variable `BUMP_VERSION_LEVEL` :
+
+```bash
+BUMP_VERSION_LEVEL=minor git commit -m "feat: grosse mise à jour"
+```
+
+Valeurs possibles : `patch` (défaut), `minor`, `major`.
+
+> Astuce : tu peux aussi exécuter manuellement `npm run bump:version -- minor` avant de commit. Le hook détectera la même valeur si `BUMP_VERSION_LEVEL` est positionnée.
+
+---
+
 ## 🔥 Firebase Configuration (Realtime Database)
 
 ### Authentication

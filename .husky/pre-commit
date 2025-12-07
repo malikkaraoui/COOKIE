@@ -1,0 +1,12 @@
+LEVEL=${BUMP_VERSION_LEVEL:-patch}
+
+echo "🔃 Auto bump version (${LEVEL}) avant commit..."
+
+npm run bump:version --silent -- $LEVEL || {
+	echo "❌ Impossible d'exécuter npm run bump:version"
+	exit 1
+}
+
+git add package.json src/config/version.ts || exit 1
+
+echo "✅ Version bump appliqué et stage"
