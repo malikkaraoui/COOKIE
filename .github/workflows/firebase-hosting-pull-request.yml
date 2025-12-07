@@ -24,6 +24,8 @@ jobs:
         run: npm ci
         
       - name: Build
+        env:
+          VITE_REOWN_PROJECT_ID: ${{ secrets.VITE_REOWN_PROJECT_ID }}
         run: npm run build:dev 
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:

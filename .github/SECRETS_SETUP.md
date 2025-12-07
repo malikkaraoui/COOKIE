@@ -31,6 +31,16 @@ Ce document explique comment configurer les **GitHub Secrets** pour les déploie
 
 ---
 
+### 🟣 Reown / WalletConnect (preview + prod)
+
+| Nom du Secret | Valeur Exemple | Où trouver |
+|---------------|----------------|------------|
+| `VITE_REOWN_PROJECT_ID` | `20be77f9669a6854d0ff6ce30dfdf8f0` | Tableau de bord Reown/AppKit → Project Settings |
+
+> ⚠️ Ce secret alimente la variable `VITE_REOWN_PROJECT_ID` au build. **Ne l’expose jamais en clair** dans les workflows ou logs.
+
+---
+
 ### 🧪 Hyperliquid TESTNET (dev + staging)
 
 | Nom du Secret | Environnement | Où obtenir |
