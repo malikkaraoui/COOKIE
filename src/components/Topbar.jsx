@@ -1,6 +1,7 @@
 import { useResizablePanel } from '../hooks/useResizablePanel'
 import { useState, useEffect } from 'react'
 import LoginButton from '../auth/LoginButton'
+import { AppKitConnectButton } from './auth/AppKitConnectButton'
 
 // Modifie ici les réglages par défaut de la topbar
 const TOPBAR_DESKTOP_CONFIG = {
@@ -41,7 +42,10 @@ export default function Topbar() {
     <>
       <header className="topbar" style={{ height: topbarHeight }}>
         <div className="topbar-content">
-          <LoginButton />
+          <div className="topbar-actions">
+            <AppKitConnectButton label="Reown login" />
+            <LoginButton />
+          </div>
         </div>
       </header>
 

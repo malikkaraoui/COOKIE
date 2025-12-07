@@ -93,7 +93,6 @@ export function MarketDataProvider({ children }) {
             const prevDayPx = Number(tokenData.prevDayPx)
             
             if (!isNaN(markPx) && !isNaN(prevDayPx) && prevDayPx > 0) {
-              console.log(`✅ assetCtxs ${symbol}:`, { markPx, prevDayPx })
               updateToken(symbol, { 
                 price: markPx, 
                 prevDayPx,
@@ -140,11 +139,6 @@ export function MarketDataProvider({ children }) {
           const tokenData = binanceData[symbol]
           
           if (tokenData && tokenData.price != null) {
-            console.log(`📊 Firebase Binance ${symbol}:`, {
-              price: tokenData.price,
-              deltaPct: tokenData.deltaPct
-            })
-            
             // Mettre à jour dans notre state local
             updateToken(symbol, {
               price: tokenData.price,
@@ -189,19 +183,11 @@ export function MarketDataProvider({ children }) {
       // Écriture Realtime DB UNIQUEMENT pour Hyperliquid
       // (Binance est déjà écrit par useBinancePrices)
       if (normalizedSource === 'hyperliquid' && merged.price != null && merged.prevDayPx != null) {
-        console.log(`🔥 Tentative écriture Firebase Hyperliquid ${normalizedSymbol}:`, {
-          price: merged.price,
-          prevDayPx: merged.prevDayPx,
-          deltaAbs: merged.deltaAbs,
-          deltaPct: merged.deltaPct
-        })
         setCachedPriceHyper(normalizedSymbol, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,
           deltaAbs: merged.deltaAbs,
           deltaPct: merged.deltaPct
-        }).then(() => {
-          console.log(`✅ Écriture Firebase Hyperliquid ${normalizedSymbol} réussie!`)
         }).catch((err) => {
           console.error(`❌ Échec écriture Firebase Hyperliquid ${normalizedSymbol}:`, err.code, err.message)
         })

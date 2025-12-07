@@ -13,8 +13,8 @@ export default function LogoutButton({ isCompact = false }) {
   const handleLogout = async () => {
     try {
       await signOut()
-      // Redirection vers Marmiton Communautaire après déconnexion
-      navigate('/MarmitonCommunautaire')
+      // Redirection vers la page "La Marmite" (route canonique)
+      navigate('/la-marmite', { replace: true })
     } catch (err) {
       console.error('Erreur de déconnexion:', err)
     }

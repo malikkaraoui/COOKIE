@@ -11,9 +11,14 @@ import ProfilePage from '../pages/ProfilePage'
 import StripePage from '../pages/StripePage.jsx';
 import StripeSuccessPage from '../pages/StripeSuccessPage.jsx';
 import StripeCancelPage from '../pages/StripeCancelPage.jsx';
+import { useProfileGate } from '../hooks/useProfileGate'
+import { useWalletFirebaseAuth } from '../hooks/useWalletFirebaseAuth'
 
 
 export default function AppLayout() {
+  useWalletFirebaseAuth()
+  useProfileGate()
+
   return (
     <div className="app">
       <Topbar />

@@ -1,0 +1,48 @@
+.reown-logout-wrapper {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.reown-logout-button {
+  color: #7c3aed;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.reown-logout-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.reown-logout-icon {
+  background: rgba(124, 58, 237, 0.18);
+  color: currentColor;
+}
+
+.reown-logout-button:hover:not(:disabled) .reown-logout-icon {
+  background: rgba(124, 58, 237, 0.28);
+}
+
+.reown-logout-button:focus-visible {
+  outline: 2px solid rgba(124, 58, 237, 0.4);
+  outline-offset: 2px;
+}
+
+.reown-logout-hint {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.reown-logout-hint--success {
+  color: #22c55e;
+}
+
+.reown-logout-hint--error {
+  color: #f87171;
+}

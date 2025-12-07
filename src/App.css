@@ -39,6 +39,12 @@ body {
   justify-content: space-between;
 }
 
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* poignée horizontale sous la topbar */
 .topbar-resizer {
   height: 6px;

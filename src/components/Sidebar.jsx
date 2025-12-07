@@ -10,6 +10,7 @@ import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
 import LoginSidebarButton from '../auth/LoginSidebarButton'
+import { ReownLogoutButton } from './auth/ReownLogoutButton'
 import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
 
 // Styles Sidebar COMPACT, ce réglage permet le redimensionnement
@@ -300,6 +301,7 @@ export default function Sidebar() {
           
           {/* Footer fixe en bas avec les boutons auth */}
           <div className="sidebar-footer">
+            <ReownLogoutButton isCompact={isCompact} />
             {user ? (
               <>
                 <ProfileButton isCompact={isCompact} />

@@ -1,11 +1,12 @@
 // Contexte pour gérer les tokens sélectionnés (max 4)
 // Utilisé pour le drag & drop de Marmiton Communautaire vers Ma cuisine
 // Synchronisation Firebase pour utilisateurs authentifiés, localStorage sinon
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights, getPortfolioWeights } from '../lib/database/userService'
 import { migrateSelectedTokens } from '../lib/database/migrateSelectedTokens'
 import { normalizeHyperliquidSymbol } from '../config/tokenList'
+import { auth } from '../config/firebase'
 
 const SelectedTokensContext = createContext(null)
 
@@ -57,6 +58,7 @@ const normalizeTokenList = (list) => {
 export function SelectedTokensProvider({ children }) {
   const { user } = useAuth()
   const [userTokens, setUserTokens] = useState([])
+  const skippedSyncRef = useRef(false)
 
   // Charger depuis Firebase quand l'utilisateur se connecte
   useEffect(() => {
@@ -88,6 +90,19 @@ export function SelectedTokensProvider({ children }) {
   useEffect(() => {
     if (!user?.uid) return
 
+    const authUid = auth.currentUser?.uid
+    if (!authUid || authUid !== user.uid) {
+      if (!skippedSyncRef.current) {
+        console.info('[SelectedTokens] Sync ignorée : Firebase Auth pas encore aligné', {
+          contextUid: user.uid,
+          authUid,
+        })
+        skippedSyncRef.current = true
+      }
+      return
+    }
+    skippedSyncRef.current = false
+
     // localStorage (synchrone)
     try {
       if (userTokens.length > 0) {
@@ -101,7 +116,16 @@ export function SelectedTokensProvider({ children }) {
 
     // Firebase (asynchrone) - TOUJOURS sauvegarder, même si vide
     saveSelectedTokens(user.uid, userTokens)
-      .catch(err => console.error('Erreur sauvegarde tokens Firebase:', err))
+      .catch(err => {
+        const code = err?.code || err?.message || 'unknown'
+        if (code === 'PERMISSION_DENIED' || code === 'permission_denied') {
+          console.warn('[SelectedTokens] Impossible de synchroniser (permissions)', {
+            uid: user.uid,
+          })
+          return
+        }
+        console.error('Erreur sauvegarde tokens Firebase:', err)
+      })
   }, [userTokens, user?.uid])
 
   // Ajouter un token

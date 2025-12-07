@@ -524,18 +524,6 @@ export default function Page2() {
         status: marketData?.status || 'loading'
       }
       
-      // Log pour debug
-      console.log(`🔍 Page2 tokensData ${symbol}:`, {
-        source,
-        rawDeltaPct,
-        numericDeltaPct,
-        finalDeltaPct: tokenData.deltaPct,
-        price: tokenData.price,
-        prevDayPx: marketData?.prevDayPx,
-        marketDataKey: marketKey,
-        marketDataSource: marketData?.source
-      })
-      
       return tokenData
     })
     

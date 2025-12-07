@@ -19,6 +19,9 @@ export function AuthProvider({ children }) {
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
+        const providerId = currentUser.providerData?.[0]?.providerId
+          || (currentUser.uid?.startsWith('wallet:') ? 'wallet' : 'google')
+
         try {
           await createOrUpdateUserProfile(currentUser)
         } catch (error) {
@@ -27,16 +30,23 @@ export function AuthProvider({ children }) {
 
         try {
           await markWalletHeartbeat(currentUser.uid, {
-            provider: currentUser.providerData?.[0]?.providerId || 'google'
+            provider: providerId,
           })
         } catch (error) {
           console.warn('Impossible de marquer le wallet comme actif:', error)
         }
       } else if (previousUid) {
-        try {
-          await markWalletOffline(previousUid)
-        } catch (error) {
-          console.warn('Impossible de marquer le wallet comme hors-ligne:', error)
+        const stillAuthenticated = auth.currentUser?.uid === previousUid
+        if (stillAuthenticated) {
+          try {
+            await markWalletOffline(previousUid)
+          } catch (error) {
+            console.warn('Impossible de marquer le wallet comme hors-ligne:', error)
+          }
+        } else {
+          console.info('[Auth] Session Firebase déjà remplacée, skip markWalletOffline', {
+            previousUid,
+          })
         }
       }
 
@@ -47,7 +57,8 @@ export function AuthProvider({ children }) {
 
     return () => {
       unsubscribe()
-      if (previousUid) {
+      const stillAuthenticated = auth.currentUser?.uid === previousUid
+      if (previousUid && stillAuthenticated) {
         markWalletOffline(previousUid).catch(() => {})
       }
     }

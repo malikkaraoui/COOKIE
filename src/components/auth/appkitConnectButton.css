@@ -1,0 +1,18 @@
+.appkit-connect-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-direction: column;
+}
+
+.appkit-connect-wrapper appkit-button,
+.appkit-connect-wrapper .apkt-button {
+  font-size: 0.85rem;
+}
+
+.appkit-status-hint {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.2;
+  text-transform: none;
+}
