@@ -13,6 +13,7 @@ import { setCachedPriceHyper } from '../lib/database/priceCache'
 import { getHyperliquidTokenSymbols } from '../config/tokenList'
 import { ref, onValue } from 'firebase/database'
 import { db } from '../config/firebase'
+import { buildMarketDataKey } from '../lib/marketDataKeys'
 
 const MarketDataContext = createContext(null)
 
@@ -20,7 +21,7 @@ const MarketDataContext = createContext(null)
 const LS_KEY = 'marketDataCache_v1'
 
 export function MarketDataProvider({ children }) {
-  const [tokens, setTokens] = useState({}) // { BTC: { price, prevDayPx, deltaAbs, deltaPct, status, source, updatedAt } }
+  const [tokens, setTokens] = useState({}) // { BTC, BTC:binance, ... }
   const mountedRef = useRef(false)
 
   // Hydratation initiale depuis localStorage (affichage instantané)
@@ -33,8 +34,8 @@ export function MarketDataProvider({ children }) {
         if (parsed && typeof parsed === 'object') {
           // Normaliser / recalculer delta si absent mais price & prevDayPx présents
           const normalized = {}
-          Object.keys(parsed).forEach(sym => {
-            const t = parsed[sym]
+          Object.keys(parsed).forEach((key) => {
+            const t = parsed[key]
             if (t && typeof t === 'object') {
               const copy = { ...t }
               if ((copy.deltaAbs == null || copy.deltaPct == null) && copy.price != null && copy.prevDayPx != null) {
@@ -46,8 +47,11 @@ export function MarketDataProvider({ children }) {
               }
               // Marquer statut cache si pas live
               if (!copy.status) copy.status = 'cached'
-              if (!copy.source) copy.source = 'cache'
-              normalized[sym] = copy
+              if (!copy.source) {
+                const derivedSource = key.includes(':') ? key.split(':')[1] : 'hyperliquid'
+                copy.source = derivedSource ? derivedSource.toLowerCase() : 'hyperliquid'
+              }
+              normalized[key] = copy
             }
           })
           setTokens(normalized)
@@ -89,7 +93,6 @@ export function MarketDataProvider({ children }) {
             const prevDayPx = Number(tokenData.prevDayPx)
             
             if (!isNaN(markPx) && !isNaN(prevDayPx) && prevDayPx > 0) {
-              console.log(`✅ assetCtxs ${symbol}:`, { markPx, prevDayPx })
               updateToken(symbol, { 
                 price: markPx, 
                 prevDayPx,
@@ -136,20 +139,14 @@ export function MarketDataProvider({ children }) {
           const tokenData = binanceData[symbol]
           
           if (tokenData && tokenData.price != null) {
-            console.log(`📊 Firebase Binance ${symbol}:`, {
-              price: tokenData.price,
-              deltaPct: tokenData.deltaPct
-            })
-            
             // Mettre à jour dans notre state local
             updateToken(symbol, {
               price: tokenData.price,
               prevDayPx: tokenData.prevDayPx,
               deltaAbs: tokenData.deltaAbs,
               deltaPct: tokenData.deltaPct,
-              source: 'binance',
               status: 'live'
-            })
+            }, 'binance')
           }
         })
       }
@@ -161,11 +158,17 @@ export function MarketDataProvider({ children }) {
   }, [])
 
   // Fonction utilitaire de mise à jour atomique
-  function updateToken(symbol, patch) {
+  function updateToken(symbol, patch, source = 'hyperliquid') {
+    const normalizedSymbol = typeof symbol === 'string' ? symbol.trim().toUpperCase() : ''
+    const normalizedSource = (source || 'hyperliquid').trim().toLowerCase()
+    const key = buildMarketDataKey(normalizedSymbol, normalizedSource)
+    if (!key) {
+      return
+    }
     setTokens(prev => {
-      const current = prev[symbol] || { status: 'loading', source: 'cache' }
+      const current = prev[key] || { status: 'loading', source: normalizedSource }
       const appliedPatch = typeof patch === 'function' ? patch(current) : patch
-      const merged = { ...current, ...appliedPatch }
+      const merged = { ...current, ...appliedPatch, source: normalizedSource }
 
       // Calcul variation si price + prevDayPx présents
       if (merged.price != null && merged.prevDayPx != null) {
@@ -179,30 +182,26 @@ export function MarketDataProvider({ children }) {
 
       // Écriture Realtime DB UNIQUEMENT pour Hyperliquid
       // (Binance est déjà écrit par useBinancePrices)
-      if (merged.source === 'hyperliquid' && merged.price != null && merged.prevDayPx != null) {
-        console.log(`🔥 Tentative écriture Firebase Hyperliquid ${symbol}:`, {
+      if (normalizedSource === 'hyperliquid' && merged.price != null && merged.prevDayPx != null) {
+        setCachedPriceHyper(normalizedSymbol, {
           price: merged.price,
           prevDayPx: merged.prevDayPx,
           deltaAbs: merged.deltaAbs,
           deltaPct: merged.deltaPct
-        })
-        setCachedPriceHyper(symbol, {
-          price: merged.price,
-          prevDayPx: merged.prevDayPx,
-          deltaAbs: merged.deltaAbs,
-          deltaPct: merged.deltaPct
-        }).then(() => {
-          console.log(`✅ Écriture Firebase Hyperliquid ${symbol} réussie!`)
         }).catch((err) => {
-          console.error(`❌ Échec écriture Firebase Hyperliquid ${symbol}:`, err.code, err.message)
+          console.error(`❌ Échec écriture Firebase Hyperliquid ${normalizedSymbol}:`, err.code, err.message)
         })
       }
-      return { ...prev, [symbol]: merged }
+      return { ...prev, [key]: merged }
     })
   }
 
   const value = {
-    getToken: (symbol) => tokens[symbol] || null,
+    getToken: (symbol, source = 'hyperliquid') => {
+      const key = buildMarketDataKey(symbol, source)
+      if (!key) return null
+      return tokens[key] || null
+    },
     tokens
   }
 

@@ -5,15 +5,19 @@ import App from './App.jsx'
 import './index.css'
 import { NavigationProvider } from './context/NavigationContext'
 import { AuthProvider } from './auth/AuthContext'
+import { AppKitProvider } from './lib/reown/appkitConfig'
+import './lib/polyfills/svgAttributePatch'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <AuthProvider>
-        <NavigationProvider>
-          <App />
-        </NavigationProvider>
-      </AuthProvider>
+      <AppKitProvider>
+        <AuthProvider>
+          <NavigationProvider>
+            <App />
+          </NavigationProvider>
+        </AuthProvider>
+      </AppKitProvider>
     </BrowserRouter>
   </StrictMode>,
 )

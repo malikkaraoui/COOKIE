@@ -10,7 +10,8 @@ import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
 import LogoutButton from '../auth/LogoutButton'
 import LoginSidebarButton from '../auth/LoginSidebarButton'
-import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
+import { ReownLogoutButton } from './auth/ReownLogoutButton'
+import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
 
 // Styles Sidebar COMPACT, ce réglage permet le redimensionnement
 const SIDEBAR_COMPACT_WIDTH = 170
@@ -52,20 +53,29 @@ export default function Sidebar() {
     const updateHeight = () => {
       const topbar = document.querySelector('.topbar')
       const resizer = document.querySelector('.topbar-resizer')
-      if (topbar && resizer) {
-        const topbarHeight = topbar.offsetHeight
-        const resizerHeight = resizer.offsetHeight
-        setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight}px)`)
-      }
+      const xpBanner = document.querySelector('.xp-banner')
+
+      const topbarHeight = topbar?.offsetHeight ?? 0
+      const resizerHeight = resizer?.offsetHeight ?? 0
+      const xpHeight = xpBanner?.offsetHeight ?? 0
+
+      setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight + xpHeight}px)`)
     }
-    
-    // Observer les changements de taille de la topbar
-    const observer = new ResizeObserver(updateHeight)
-    const topbar = document.querySelector('.topbar')
-    if (topbar) observer.observe(topbar)
-    
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateHeight)
+      : null
+
+    const observed = [
+      document.querySelector('.topbar'),
+      document.querySelector('.topbar-resizer'),
+      document.querySelector('.xp-banner')
+    ].filter(Boolean)
+
+    observed.forEach((el) => observer?.observe(el))
     updateHeight()
-    return () => observer.disconnect()
+
+    return () => observer?.disconnect()
   }, [])
 
   // info de routing actuelle (/page1, /page2, /page3, etc.)
@@ -140,6 +150,11 @@ export default function Sidebar() {
       to: '/la-marmite', 
       label: 'La Marmite',
       icon: Soup
+    },
+    {
+      to: '/bouillon-de-legumes',
+      label: 'Bouillon de légumes',
+      icon: Sprout
     },
     // Lien Stripe visible uniquement pour les utilisateurs connectés
     ...(user ? [{
@@ -286,6 +301,7 @@ export default function Sidebar() {
           
           {/* Footer fixe en bas avec les boutons auth */}
           <div className="sidebar-footer">
+            <ReownLogoutButton isCompact={isCompact} />
             {user ? (
               <>
                 <ProfileButton isCompact={isCompact} />

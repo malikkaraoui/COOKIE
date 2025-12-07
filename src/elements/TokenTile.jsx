@@ -26,7 +26,16 @@ function fmtSignedAbs(n, d = 0) {
   return `${s}${a.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })}`
 }
 
-export default function TokenTile({ symbol, source = 'hyperliquid', draggable = false, onAddToken }) {
+export default function TokenTile({
+  symbol,
+  source = 'hyperliquid',
+  draggable = false,
+  onAddToken,
+  onRemoveToken,
+  isSelected = false,
+  selectionKey: externalSelectionKey,
+  disableAdd = false,
+}) {
   const [isMobile, setIsMobile] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [toast, setToast] = useState(null)
@@ -49,6 +58,7 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   
   const hasDelta = token.deltaAbs != null && token.deltaPct != null
   const color = !hasDelta ? '#94a3b8' : token.deltaAbs >= 0 ? '#22c55e' : '#ef4444'
+  const selectionKey = externalSelectionKey || `${symbol}:${source}`
 
   // Statut lisible
   let statusLabel = 'Chargement…'
@@ -64,23 +74,67 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   else if (resolvedSource === 'binance') sourceLabel = 'Binance'
 
   // Gestion clic mobile
+  const attemptAddToken = () => {
+    if (!onAddToken) {
+      return null
+    }
+    const result = onAddToken(selectionKey)
+    if (result?.success) {
+      setIsAnimating(true)
+      setTimeout(() => setIsAnimating(false), 600)
+      setToast({ message: `${symbol} ajouté !`, type: 'success' })
+      console.log('✅', symbol, 'ajouté !')
+    } else if (result?.reason === 'already_exists') {
+      setToast({ message: `${symbol} déjà ajouté`, type: 'warning' })
+      console.warn('⚠️', symbol, 'déjà ajouté')
+    } else if (result?.reason === 'max_reached') {
+      setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+      console.warn('⚠️ Maximum 4 tokens')
+    } else if (result?.reason === 'not_logged_in') {
+      setToast({ message: 'Connecte-toi pour ajouter un token', type: 'warning' })
+    }
+    return result
+  }
+
   const handleClick = (e) => {
-    if (isMobile && draggable && onAddToken) {
+    if (isMobile && draggable) {
       e.preventDefault()
-      const result = onAddToken(`${symbol}:${source}`)
-      if (result?.success) {
-        setIsAnimating(true)
-        setTimeout(() => setIsAnimating(false), 600)
-        setToast({ message: `${symbol} ajouté !`, type: 'success' })
-        console.log('✅', symbol, 'ajouté !')
-      } else if (result?.reason === 'already_exists') {
-        setToast({ message: `${symbol} déjà ajouté`, type: 'warning' })
-        console.warn('⚠️', symbol, 'déjà ajouté')
-      } else if (result?.reason === 'max_reached') {
+      if (isSelected) {
+        handleRemove()
+      } else if (!disableAdd) {
+        attemptAddToken()
+      } else {
         setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
-        console.warn('⚠️ Maximum 4 tokens')
       }
     }
+  }
+
+  const handleRemove = () => {
+    if (!onRemoveToken || !isSelected || !selectionKey) {
+      return
+    }
+    Promise.resolve(onRemoveToken(selectionKey))
+      .then(() => {
+        setToast({ message: `${symbol} retiré`, type: 'info' })
+      })
+      .catch((error) => {
+        console.warn('Impossible de retirer le token:', error)
+        setToast({ message: 'Erreur lors du retrait', type: 'warning' })
+      })
+  }
+
+  const handleActionClick = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (isSelected) {
+      handleRemove()
+      return
+    }
+    if (disableAdd) {
+      setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+      return
+    }
+    attemptAddToken()
   }
 
   return (
@@ -96,33 +150,55 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
       }}
       {...(draggable && !isMobile ? dragHandlers : {})}
       onClick={isMobile && draggable ? handleClick : undefined}
-      onDragStart={draggable && !isMobile ? (e) => dragHandlers.onDragStart(e, `${symbol}:${source}`) : undefined}
+      onDragStart={draggable && !isMobile ? (e) => dragHandlers.onDragStart(e, selectionKey) : undefined}
     >
       <img 
         src={iconPath} 
         alt={symbol} 
-        width={40} 
-        height={40} 
+        width={36} 
+        height={36} 
         style={styles.icon}
         onError={handleError}
       />
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={styles.name}>{token.name}</div>
-        <div style={{ ...styles.delta, color, minHeight: 16 }}>
-          {hasDelta ? `(${fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 0)} / ${fmtSignedAbs(token.deltaPct, 2)}%)` : 'Variation...'}
+      <div style={styles.content}>
+        <div style={styles.headerRow}>
+          <div style={styles.name}>{token.name}</div>
+          <span style={styles.sourceBadge}>{sourceLabel}</span>
         </div>
-        <div style={styles.price}>{token.price != null ? fmtUSD(token.price) : '—'}</div>
-        <div style={styles.sub}>
+        <div style={{ ...styles.priceRow }}>
+          <span style={styles.price}>{token.price != null ? fmtUSD(token.price) : '—'}</span>
+          <span style={{ ...styles.delta, color }}>
+            {hasDelta ? `${fmtSignedAbs(token.deltaPct, 2)}%` : '…'}
+          </span>
+        </div>
+        <div style={styles.metaRow}>
           {token.error && <span style={{ color: '#ef4444' }}>⛔ {token.error}</span>}
           {!token.error && (
             <span>
               <span style={{ color: token.status === 'live' ? '#22c55e' : '#94a3b8' }}>{statusLabel}</span>
               {' • '}
-              <span style={{ color: '#64748b' }}>{sourceLabel}</span>
+              <span style={{ color: '#64748b' }}>Δ {hasDelta ? fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 2) : '…'}</span>
             </span>
           )}
         </div>
       </div>
+      <button
+        type="button"
+        style={{
+          ...styles.actionButton,
+          background: isSelected ? '#7f1d1d' : '#064e3b',
+          borderColor: isSelected ? '#f87171' : '#34d399',
+          color: isSelected ? '#fecaca' : '#bbf7d0',
+          opacity: !isSelected && disableAdd ? 0.4 : 1,
+          cursor: !isSelected && disableAdd ? 'not-allowed' : 'pointer',
+        }}
+        onClick={handleActionClick}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        disabled={!isSelected && disableAdd}
+      >
+        {isSelected ? 'Retirer' : 'Ajouter'}
+      </button>
     </div>
     
     {/* Toast notification */}
@@ -138,10 +214,36 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
 }
 
 const styles = {
-  card: { display: 'flex', alignItems: 'center', padding: 12, background: '#0f172a', color: '#e5e7eb', borderRadius: 12, border: '1px solid #334155', width: 320, gap: 12 },
-  icon: { borderRadius: '50%', flexShrink: 0 },
-  name: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
-  delta: { fontSize: 13, marginBottom: 4 },
-  price: { fontSize: 22, fontWeight: 700, lineHeight: 1.2 },
-  sub: { fontSize: 11, color: '#94a3b8', marginTop: 2 }
+  card: {
+    display: 'grid',
+    gridTemplateColumns: 'auto 1fr auto',
+    alignItems: 'center',
+    padding: '8px 10px',
+    background: '#0b1220',
+    color: '#e5e7eb',
+    borderRadius: 10,
+    border: '1px solid #1f2a3b',
+    width: '100%',
+    gap: 12,
+    minWidth: 0,
+  },
+  icon: { borderRadius: '50%', flexShrink: 0, boxShadow: '0 0 8px rgba(15,23,42,0.6)', width: 32, height: 32 },
+  content: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
+  headerRow: { display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' },
+  name: { fontSize: 10, color: '#cbd5f5', textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+  sourceBadge: { fontSize: 9, padding: '1px 5px', borderRadius: 999, background: '#1d2537', color: '#94a3b8', border: '1px solid #2b354a' },
+  priceRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 },
+  price: { fontSize: 16, fontWeight: 700, lineHeight: 1.1 },
+  delta: { fontSize: 11 },
+  metaRow: { fontSize: 10, color: '#94a3b8', minHeight: 12 },
+  actionButton: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    padding: '4px 8px',
+    fontSize: 11,
+    fontWeight: 600,
+    transition: 'transform 0.15s ease, opacity 0.2s ease',
+    minWidth: 68,
+  },
 }

@@ -10,7 +10,8 @@ import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 
 export default function Page1() {
-  const { addToken } = useSelectedTokens()
+  const { addToken, removeToken, selectedTokens, isFull, count, maxTokens } = useSelectedTokens()
+  const selectionSet = new Set(selectedTokens)
 
   // Combiner Hyperliquid (10 tokens) + Binance (30 tokens)
   // Afficher les tokens Hyperliquid en premier, puis Binance
@@ -38,9 +39,11 @@ export default function Page1() {
         <h1 style={{ color: '#e5e7eb', margin: 0 }}>Épicerie fine</h1>
       </div>
       
-      <p style={{ color: '#94a3b8', fontSize: 14, marginBottom: 8 }}>
-        Glissez jusqu'à 4 Ingrédients vers "Ma cuisine" à cuisiner !! 👨🏼‍🍳
-      </p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', color: '#94a3b8', fontSize: 13 }}>
+        <p style={{ margin: 0 }}>
+          Ajoute jusqu'à {maxTokens} ingrédients ( {count}/{maxTokens} ) dans ta cuisine. Au-delà, les boutons passent en pause.
+        </p>
+      </div>
 
       <div style={{ 
         display: 'flex', 
@@ -63,17 +66,35 @@ export default function Page1() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-        {allTokens.map((token, idx) => (
-          <TokenTile 
-            key={`${token.symbol}:${token.source}:${idx}`}
-            symbol={token.symbol} 
-            source={token.source} 
-            draggable 
-            onAddToken={addToken}
-          />
-        ))}
+      <div style={gridStyles.list}>
+        {allTokens.map((token, idx) => {
+          const normalizedSymbol = token.symbol.toUpperCase()
+          const normalizedSource = (token.source || 'hyperliquid').toLowerCase()
+          const selectionKey = `${normalizedSymbol}:${normalizedSource}`
+          const isSelected = selectionSet.has(selectionKey)
+          return (
+            <TokenTile 
+              key={`${token.symbol}:${token.source}:${idx}`}
+              symbol={normalizedSymbol} 
+              source={normalizedSource}
+              draggable 
+              onAddToken={addToken}
+              onRemoveToken={removeToken}
+              isSelected={isSelected}
+              selectionKey={selectionKey}
+              disableAdd={isFull && !isSelected}
+            />
+          )
+        })}
       </div>
     </div>
   )
+}
+
+const gridStyles = {
+  list: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: 12,
+  }
 }

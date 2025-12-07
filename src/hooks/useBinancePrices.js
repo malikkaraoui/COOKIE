@@ -22,10 +22,6 @@ export function useBinancePrices() {
           const data = await getBinanceTicker24hr(token.symbol)
           
           if (isMounted) {
-            // Log avec précision adaptée (8 décimales pour micro-caps)
-            const decimals = data.price < 0.01 ? 8 : 2
-            console.log(`📊 Binance ${token.id}: $${data.price.toFixed(decimals)} (${data.priceChangePercent >= 0 ? '+' : ''}${data.priceChangePercent.toFixed(2)}%)`)
-            
             // Écriture dans Firebase /priceTokenBinance/{id}
             await setCachedPriceBinance(token.id, {
               price: data.price,

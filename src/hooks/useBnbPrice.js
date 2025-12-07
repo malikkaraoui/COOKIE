@@ -34,8 +34,6 @@ export function useBnbPrice() {
             error: null
           })
           
-          console.log(`📊 Binance BNB: ${data.price} USD (${data.priceChangePercent >= 0 ? '+' : ''}${data.priceChangePercent.toFixed(2)}%)`)
-          
           // Écriture dans Firebase priceTokenBinance/BNB
           await setCachedPriceBinance('BNB', {
             price: data.price,
