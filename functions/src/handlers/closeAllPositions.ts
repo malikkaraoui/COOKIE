@@ -103,6 +103,16 @@ function quantizePrice(
   return price.toFixed(6).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
 }
 
+const CLOSE_ORDER_TIF = "FrontendMarket" as const;
+
+function isPostOnlyWindowError(error: unknown): boolean {
+  if (!error) {
+    return false;
+  }
+  const message = typeof error === "string" ? error : (error as any)?.message;
+  return typeof message === "string" && /post-only orders allowed/i.test(message);
+}
+
 export const closeAllPositions = functions.https.onRequest(async (req, res) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -187,8 +197,8 @@ export const closeAllPositions = functions.https.onRequest(async (req, res) => {
           b: !isLong,
           p: price,
           s: Math.abs(size).toString(),
-          r: false,
-          t: { limit: { tif: "Ioc" as const } },
+          r: true,
+          t: { limit: { tif: CLOSE_ORDER_TIF } },
         };
       })
       .filter(Boolean) as Array<{
@@ -197,15 +207,24 @@ export const closeAllPositions = functions.https.onRequest(async (req, res) => {
         p: string;
         s: string;
         r: boolean;
-        t: { limit: { tif: "Ioc" } };
+        t: { limit: { tif: typeof CLOSE_ORDER_TIF } };
       }>;
 
     let closeResult: unknown = null;
     if (closeOrders.length > 0) {
-      closeResult = await exchangeClient.order({
-        orders: closeOrders,
-        grouping: "na",
-      });
+      try {
+        closeResult = await exchangeClient.order({
+          orders: closeOrders,
+          grouping: "na",
+        });
+      } catch (error) {
+        if (isPostOnlyWindowError(error)) {
+          throw new Error(
+            "Hyperliquid impose temporairement des ordres post-only juste après une mise à jour réseau. Réessaie dans quelques dizaines de secondes."
+          );
+        }
+        throw error;
+      }
     }
 
     res.status(200).json({

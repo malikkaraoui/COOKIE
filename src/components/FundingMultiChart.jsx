@@ -12,11 +12,17 @@ import { useMemo } from 'react'
 import { useFundingMetrics } from '../hooks/useFundingMetrics'
 
 const MAX_SERIES = 4
-const COLOR_PALETTE = ['#34d399', '#38bdf8', '#f472b6', '#facc15', '#c084fc']
+const COLOR_PALETTE = ['#34d399', '#38bdf8', '#f472b6', '#c084fc', '#60a5fa']
+const PORTFOLIO_COLOR = '#facc15'
 
 const formatPercent = (value = 0) => `${value.toFixed(2)} %`
 
-export default function FundingMultiChart({ pairs = [], days = 20 }) {
+export default function FundingMultiChart({
+  pairs = [],
+  days = 20,
+  visibleDays = 20,
+  weightsMap = {}
+}) {
   const trackedPairs = pairs.slice(0, MAX_SERIES)
   const symbols = trackedPairs.map(
     (entry) => entry?.pairSymbol ?? entry?.baseSymbol ?? null
@@ -71,18 +77,51 @@ export default function FundingMultiChart({ pairs = [], days = 20 }) {
       buildSeries(label, metrics.data)
     })
 
-    return Array.from(registry.values()).sort((a, b) => a.time - b.time)
-  }, [seriesDefinitions])
-
-  if (!seriesDefinitions.length) {
-    return null
-  }
+    const sorted = Array.from(registry.values()).sort((a, b) => a.time - b.time)
+    if (!visibleDays || !sorted.length) {
+      return sorted
+    }
+    const maxTime = sorted[sorted.length - 1].time
+    const cutoff = maxTime - visibleDays * 24 * 60 * 60 * 1000
+    return sorted.filter((row) => row.time >= cutoff)
+  }, [seriesDefinitions, visibleDays])
 
   const anyLoading = seriesDefinitions.some((serie) => serie.metrics.loading)
   const errors = seriesDefinitions
     .map((serie) => serie.metrics.error)
     .filter(Boolean)
-  const hasData = chartData.length > 0
+  const totalWeight = Object.values(weightsMap).reduce((sum, value) => sum + (Number(value) || 0), 0)
+
+  const enhancedChartData = useMemo(() => {
+    if (!chartData.length || totalWeight <= 0) {
+      return chartData
+    }
+    return chartData.map((row) => {
+      let weightedValue = 0
+      let weightContribution = 0
+      seriesDefinitions.forEach(({ label }) => {
+        const tokenWeight = Number(weightsMap[label]) || 0
+        const tokenValue = row[label]
+        if (tokenWeight > 0 && Number.isFinite(tokenValue)) {
+          weightedValue += tokenWeight * tokenValue
+          weightContribution += tokenWeight
+        }
+      })
+      if (weightContribution > 0) {
+        return {
+          ...row,
+          __portfolio: weightedValue / weightContribution
+        }
+      }
+      return row
+    })
+  }, [chartData, seriesDefinitions, totalWeight, weightsMap])
+
+  const hasData = enhancedChartData.length > 0
+
+  if (!seriesDefinitions.length) {
+    return null
+  }
 
   return (
     <div className="w-full rounded-2xl bg-slate-950/70 p-4 border border-slate-800/70">
@@ -115,9 +154,9 @@ export default function FundingMultiChart({ pairs = [], days = 20 }) {
       )}
 
       {hasData ? (
-        <div style={{ width: '100%', height: 220 }}>
+        <div style={{ width: '100%', height: 240 }}>
           <ResponsiveContainer>
-            <LineChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+            <LineChart data={enhancedChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.08} />
               <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 12 }} />
               <YAxis
@@ -148,6 +187,19 @@ export default function FundingMultiChart({ pairs = [], days = 20 }) {
                   connectNulls
                 />
               ))}
+              {totalWeight > 0 && (
+                <Line
+                  type="monotone"
+                  dataKey="__portfolio"
+                  stroke={PORTFOLIO_COLOR}
+                  strokeWidth={3}
+                  dot={false}
+                  strokeDasharray="6 4"
+                  name="Profil utilisateur"
+                  isAnimationActive={false}
+                  connectNulls
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </div>

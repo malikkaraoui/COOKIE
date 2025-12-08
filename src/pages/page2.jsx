@@ -10,6 +10,7 @@ import TokenWeightRow from '../elements/TokenWeightRow'
 import PortfolioResults from '../elements/PortfolioResults'
 import PortfolioChart from '../elements/PortfolioChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
+import { useTradeNotifications } from '../hooks/useTradeNotifications'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useMarketData } from '../providers/MarketDataProvider'
@@ -18,8 +19,8 @@ import { getTokenConfig } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import TokenFundingCard from '../components/TokenFundingCard'
 import FundingMultiChart from '../components/FundingMultiChart'
-import { 
-  placeHyperliquidTestOrder, 
+import {
+  placeHyperliquidTestOrder,
   fetchHyperliquidOpenOrders,
   closeAllHyperliquidPositions
 } from '../lib/hyperliquidOrders'
@@ -32,10 +33,10 @@ import {
   closeAndDustBinancePositions,
   BINANCE_PRESET_ORDER
 } from '../services/trading/binanceApi'
-import { 
-  getInitialCapital, 
-  saveInitialCapital, 
-  subscribeInitialCapital 
+import {
+  getInitialCapital,
+  saveInitialCapital,
+  subscribeInitialCapital
 } from '../lib/database/userService'
 import { clearActiveFundingSignal } from '../lib/database/xpService'
 
@@ -167,7 +168,6 @@ const derivePricePrecision = (value, fallback = PRICE_NUDGE_DECIMALS) => {
 }
 
 const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
-
 const DECIMAL_INPUT_REGEX = /^\d*(?:[,.]\d*)?$/u
 
 const normalizeDecimalInput = (value) => {
@@ -401,6 +401,7 @@ const formatWithStepPrecision = (value, step) => {
 
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
+  const [fundingWindowDays, setFundingWindowDays] = useState(20)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
   const [closeAllStatus, setCloseAllStatus] = useState({ state: 'idle', message: '', payload: null })
@@ -430,6 +431,11 @@ export default function Page2() {
   const { user } = useAuth()
   // Récupérer aussi 'tokens' pour re-mémoïser quand les prix/variations changent
   const { getToken, tokens } = useMarketData()
+  const {
+    notifyOrderExecuted,
+    notifyOrderClosedByWatcher,
+    notifyOrderInOrderBook
+  } = useTradeNotifications()
 
   const selectedSymbols = useMemo(() => {
     return selectedTokens.map(symbolWithSource => {
@@ -691,11 +697,23 @@ export default function Page2() {
     results
   } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
 
+  const fundingWeightsMap = useMemo(() => {
+    const map = {}
+    fundingDisplayPairs.forEach((entry) => {
+      const key = entry.baseSymbol?.toUpperCase()
+      if (key) {
+        map[key] = weights[key] ?? 0
+      }
+    })
+    return map
+  }, [fundingDisplayPairs, weights])
+
   const capitalDebounceRef = useRef(null)
   const isEditingCapitalRef = useRef(false)
   const lastSyncedCapitalRef = useRef(null)
   const priceNudgeIntervalRef = useRef(null)
   const binancePriceNudgeIntervalRef = useRef(null)
+  const binanceRecentNotifiedRef = useRef(new Set())
 
   // Synchronise le capital initial avec Firebase quand l'utilisateur est connecté
   useEffect(() => {
@@ -1301,6 +1319,112 @@ export default function Page2() {
     }, 600)
   }
 
+  const extractOrderIdFromStatus = (status, index) => {
+    void index
+    if (!status || typeof status !== 'object') {
+      return null
+    }
+    const candidates = [
+      status.restingOrderId,
+      status.resting_order_id,
+      status.orderId,
+      status.order_id,
+      status.oid,
+      status.id
+    ]
+    const picked = candidates.find((value) => value != null && value !== '')
+    if (picked == null) {
+      return null
+    }
+    return String(picked)
+  }
+
+  const notifyOrdersAwaitingFill = (response, orders) => {
+    if (!orders?.length) {
+      return
+    }
+    const statuses = Array.isArray(response?.result?.statuses)
+      ? response.result.statuses
+      : Array.isArray(response?.result?.data?.statuses)
+        ? response.result.data.statuses
+        : []
+
+    const timestamp = Date.now()
+    orders.forEach((order, index) => {
+      const status = statuses[index]
+      const id = extractOrderIdFromStatus(status, index) || `${order.symbol}-${timestamp}-${index}`
+      const normalizedStatus = typeof status?.status === 'string'
+        ? status.status.toLowerCase()
+        : typeof status?.statusType === 'string'
+          ? status.statusType.toLowerCase()
+          : ''
+      const payload = {
+        id,
+        symbol: order.symbol,
+        side: order.side === 'sell' ? 'sell' : 'buy'
+      }
+      if (normalizedStatus === 'filled' || normalizedStatus === 'done' || normalizedStatus === 'complete') {
+        notifyOrderExecuted(payload)
+      } else {
+        notifyOrderInOrderBook(payload)
+      }
+    })
+  }
+
+  const notifyBinanceClosedPositions = (entries) => {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return
+    }
+    const timestamp = Date.now()
+    entries.forEach((entry, index) => {
+      if (!entry || entry.status !== 'closed') {
+        return
+      }
+      const orderResponse = entry.orderResponse || {}
+      const rawId = orderResponse.orderId
+        ?? orderResponse.clientOrderId
+        ?? orderResponse.origClientOrderId
+        ?? entry.symbol
+        ?? entry.asset
+        ?? `${timestamp}-${index}`
+      let side
+      if (typeof orderResponse.side === 'string') {
+        side = orderResponse.side.toLowerCase() === 'sell' ? 'sell' : 'buy'
+      } else if (entry.quantity != null) {
+        const numericQty = Number(entry.quantity)
+        if (Number.isFinite(numericQty)) {
+          side = numericQty < 0 ? 'sell' : 'buy'
+        }
+      }
+      notifyOrderClosedByWatcher({
+        id: String(rawId),
+        symbol: entry.symbol || entry.asset || 'Binance',
+        side
+      })
+    })
+  }
+
+  const notifyHyperliquidClosures = (result) => {
+    const statuses = Array.isArray(result?.statuses)
+      ? result.statuses
+      : Array.isArray(result?.data?.statuses)
+        ? result.data.statuses
+        : []
+    if (!statuses.length) {
+      return
+    }
+    const timestamp = Date.now()
+    statuses.forEach((status, index) => {
+      const id = extractOrderIdFromStatus(status, index) || `hl-close-${timestamp}-${index}`
+      const symbol = typeof status?.coin === 'string' ? status.coin : 'Hyperliquid'
+      let side
+      if (typeof status?.side === 'string') {
+        side = status.side.toLowerCase() === 'sell' ? 'sell' : 'buy'
+      }
+      notifyOrderClosedByWatcher({ id, symbol, side })
+    })
+  }
+
   const sendTestOrder = async () => {
     if (!hasOrderableTokens) {
       setOrderStatus({
@@ -1347,6 +1471,7 @@ export default function Page2() {
         message: `${sanitizedOrders.length} ordre(s) envoyés ✅`,
         payload: response
       })
+      notifyOrdersAwaitingFill(response, sanitizedOrders)
     } catch (error) {
       setOrderStatus({ state: 'error', message: error.message, payload: null })
     }
@@ -1390,13 +1515,20 @@ export default function Page2() {
         payload: response
       })
 
+      notifyHyperliquidClosures(response?.closeResult)
+      notifyHyperliquidClosures(response?.cancelResult)
+
       if (user?.uid) {
         clearActiveFundingSignal(user.uid).catch((error) => {
           console.warn('Impossible de désactiver le signal XP du bouillon:', error)
         })
       }
     } catch (error) {
-      setCloseAllStatus({ state: 'error', message: error.message, payload: null })
+      const rawMessage = error?.message || 'Erreur inconnue côté Cloud Function'
+      const friendlyMessage = /post-only/i.test(rawMessage)
+        ? 'Hyperliquid vient d’appliquer un redémarrage réseau: seuls les ordres post-only sont autorisés pendant ~60s. Patiente un court instant puis relance la fermeture.'
+        : rawMessage
+      setCloseAllStatus({ state: 'error', message: friendlyMessage, payload: null })
     }
   }
 
@@ -1486,6 +1618,8 @@ export default function Page2() {
         payload: response
       })
 
+      notifyBinanceClosedPositions(response?.closedPositions)
+
       const refreshed = await fetchBinanceOpenOrders({
         includeClosed: true,
         historySymbol: BINANCE_PRESET_ORDER.symbol,
@@ -1545,6 +1679,8 @@ export default function Page2() {
         message: summary.join(' • '),
         payload: response
       })
+
+      notifyBinanceClosedPositions(response?.closedPositions)
 
       const refreshed = await fetchBinanceOpenOrders({
         includeClosed: true,
@@ -1739,8 +1875,54 @@ export default function Page2() {
   const binanceBatchStatusColor = statusColorMap[binanceBatchStatus.state]
   const openOrdersList = openOrdersStatus.payload?.openOrders ?? []
   const openPositionsList = openOrdersStatus.payload?.openPositions ?? []
-  const binanceOpenOrdersList = Array.isArray(binanceOpenOrders) ? binanceOpenOrders : []
-  const binanceRecentOrdersList = Array.isArray(binanceRecentOrders) ? binanceRecentOrders : []
+  const binanceOpenOrdersList = useMemo(
+    () => (Array.isArray(binanceOpenOrders) ? binanceOpenOrders : []),
+    [binanceOpenOrders]
+  )
+  const binanceRecentOrdersList = useMemo(
+    () => (Array.isArray(binanceRecentOrders) ? binanceRecentOrders : []),
+    [binanceRecentOrders]
+  )
+  useEffect(() => {
+    if (!binanceRecentOrdersList.length) {
+      return
+    }
+    const seen = binanceRecentNotifiedRef.current
+    let mutated = false
+    binanceRecentOrdersList.forEach((order) => {
+      const rawId = order?.orderId
+        ?? order?.clientOrderId
+        ?? order?.origClientOrderId
+        ?? order?.updateTime
+        ?? order?.time
+      if (rawId == null) {
+        return
+      }
+      const id = String(rawId)
+      if (seen.has(id)) {
+        return
+      }
+      const status = typeof order?.status === 'string' ? order.status.toUpperCase() : ''
+      if (!status) {
+        return
+      }
+      const side = typeof order?.side === 'string' && order.side.toLowerCase() === 'sell' ? 'sell' : 'buy'
+      const symbol = order?.symbol || 'Binance'
+      if (status === 'FILLED') {
+        notifyOrderExecuted({ id, symbol, side })
+        seen.add(id)
+        mutated = true
+      } else if (status === 'CANCELED' || status === 'EXPIRED') {
+        notifyOrderClosedByWatcher({ id, symbol, side })
+        seen.add(id)
+        mutated = true
+      }
+    })
+    if (mutated && seen.size > 120) {
+      const trimmed = Array.from(seen).slice(-80)
+      binanceRecentNotifiedRef.current = new Set(trimmed)
+    }
+  }, [binanceRecentOrdersList, notifyOrderClosedByWatcher, notifyOrderExecuted])
   const binanceFiltersCacheRef = useRef({})
 
   const formatNumericString = (value, options = {}) => {
@@ -1782,24 +1964,8 @@ export default function Page2() {
     }
   }
 
-  return (
-    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ 
-          color: '#e5e7eb', 
-          fontSize: '32px', 
-          fontWeight: 'bold',
-          margin: 0,
-          marginBottom: '8px'
-        }}>
-          Ma Cuisine 👨🏼‍🍳
-        </h1>
-        <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
-          Simulateur de portfolio • Optimisez vos allocations
-        </p>
-      </div>
-
+  const renderBinanceSpotControls = () => (
+    <>
       {/* Contrôle Binance Spot */}
       <div
         style={{
@@ -1880,10 +2046,9 @@ export default function Page2() {
                 lineHeight: 1.4
               }}
             >
-              <li>POST /placeBinanceSpotOrder</li>
-              <li>GET /listBinanceOpenOrders</li>
-              <li>POST /cancelAllBinanceOpenOrders</li>
-              <li>POST /closeAndDustBinancePositions</li>
+              <li>Cloud Function privée (node 22) avec signature HMAC</li>
+              <li>Flux Firebase (Realtime DB) pour suivre le statut</li>
+              <li>Préfixes <strong>:binance</strong> pour différencier les tokens</li>
             </ul>
           </div>
         </div>
@@ -1891,133 +2056,119 @@ export default function Page2() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
             gap: '10px',
-            marginTop: '16px'
+            marginTop: '18px'
           }}
         >
-          <button
-            onClick={handleBinancePresetOrder}
-            disabled={binanceOrderStatus.state === 'loading'}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: 'none',
-              background:
-                binanceOrderStatus.state === 'loading'
-                  ? 'linear-gradient(135deg, #0c172c, #081022)'
-                  : 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
-              color: '#f8fafc',
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: binanceOrderStatus.state === 'loading' ? 'wait' : 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {binanceOrderStatus.state === 'loading' ? 'Envoi en cours…' : 'Envoyer l’ordre market preset'}
-          </button>
-
-          <button
-            onClick={handleBinanceLargePresetOrder}
-            disabled={binanceLargeOrderStatus.state === 'loading'}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: '1px solid #1f2d40',
-              background:
-                binanceLargeOrderStatus.state === 'loading'
-                  ? 'linear-gradient(135deg, #140a24, #0b0513)'
-                  : 'linear-gradient(135deg, #7c3aed, #c026d3)',
-              color: '#fdf4ff',
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: binanceLargeOrderStatus.state === 'loading' ? 'wait' : 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            {binanceLargeOrderStatus.state === 'loading' ? 'Envoi ordre 100$…' : 'Envoyer l’ordre market 100 USDT'}
-          </button>
-
-          <button
-            onClick={handleFetchBinanceOpenOrders}
-            disabled={binanceFetchStatus.state === 'loading'}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: '1px solid #1e293b',
-              background: '#020a16',
-              color: '#e2e8f0',
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: binanceFetchStatus.state === 'loading' ? 'wait' : 'pointer'
-            }}
-          >
-            {binanceFetchStatus.state === 'loading' ? 'Lecture des ordres…' : 'Lister les ordres ouverts'}
-          </button>
-
-          <button
-            onClick={handleCancelAllBinanceOrders}
-            disabled={binanceCancelStatus.state === 'loading'}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: 'none',
-              background:
-                binanceCancelStatus.state === 'loading'
-                  ? 'linear-gradient(135deg, #3f1a1f, #2d0d13)'
-                  : 'linear-gradient(135deg, #be123c, #fb7185)',
-              color: '#fff1f2',
-              fontWeight: 700,
-              fontSize: '14px',
-              cursor: binanceCancelStatus.state === 'loading' ? 'wait' : 'pointer'
-            }}
-          >
-            {binanceCancelStatus.state === 'loading' ? 'Nettoyage…' : 'Fermer toutes les positions BINANCE'}
-          </button>
-
-          <button
-            onClick={handleCloseAndDustBinancePositions}
-            disabled={binanceDustStatus.state === 'loading'}
-            style={{
-              padding: '10px 16px',
-              borderRadius: '10px',
-              border: 'none',
-              background:
-                binanceDustStatus.state === 'loading'
-                  ? 'linear-gradient(135deg, #2b1a39, #1b1024)'
-                  : 'linear-gradient(135deg, #a855f7, #ec4899)',
-              color: '#fdf4ff',
-              fontWeight: 700,
-              fontSize: '14px',
-              cursor: binanceDustStatus.state === 'loading' ? 'wait' : 'pointer'
-            }}
-          >
-            {binanceDustStatus.state === 'loading' ? 'Fermeture + BNB…' : 'Fermer + Convertir en BNB'}
-          </button>
+          {[{
+            label: 'Ordre market BUY',
+            action: handleBinancePresetOrder,
+            status: binanceOrderStatus,
+            color: '#3b82f6',
+            description: 'Envoie un ordre market BUY 20 USDT'
+          }, {
+            label: 'Ordre market 100 USDT',
+            action: handleBinanceLargePresetOrder,
+            status: binanceLargeOrderStatus,
+            color: '#8b5cf6',
+            description: 'Ordre BUY 100 USDT'
+          }, {
+            label: 'Lister ordres',
+            action: handleFetchBinanceOpenOrders,
+            status: binanceFetchStatus,
+            color: '#10b981',
+            description: 'Consulte le carnet testnet'
+          }, {
+            label: 'Cancel All',
+            action: handleCancelAllBinanceOrders,
+            status: binanceCancelStatus,
+            color: '#f97316',
+            description: 'Annule les ordres ouverts'
+          }, {
+            label: 'Fermer + convert BNB',
+            action: handleCloseAndDustBinancePositions,
+            status: binanceDustStatus,
+            color: '#f43f5e',
+            description: 'Ferme et convertit les poussières'
+          }].map((item) => (
+            <div
+              key={item.label}
+              style={{
+                border: '1px solid #102038',
+                borderRadius: '12px',
+                padding: '14px',
+                background: '#01050c'
+              }}
+            >
+              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>{item.label}</p>
+              <p style={{ color: '#64748b', margin: '6px 0 12px', fontSize: '13px' }}>{item.description}</p>
+              <button
+                onClick={item.action}
+                disabled={item.status.state === 'loading'}
+                style={{
+                  width: '100%',
+                  padding: '10px 16px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  background: item.status.state === 'loading' ? '#1e293b' : item.color,
+                  color: 'white',
+                  fontWeight: 600,
+                  cursor: item.status.state === 'loading' ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {item.status.state === 'loading' ? 'En cours…' : 'Exécuter'}
+              </button>
+              <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px' }}>
+                {item.status.message || 'Statut en attente.'}
+              </p>
+            </div>
+          ))}
         </div>
 
-        {/* Compositeur multi-ordres Binance */}
         <div
           style={{
-            marginTop: '28px',
-            border: '1px solid #132038',
-            borderRadius: '18px',
-            padding: '20px',
-            background: 'linear-gradient(135deg, rgba(4,11,22,0.85), rgba(8,18,35,0.95))'
+            marginTop: '20px',
+            padding: '18px',
+            borderRadius: '14px',
+            border: '1px solid #102038',
+            background: '#010814'
           }}
         >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+            <div>
+              <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '17px', fontWeight: 'bold' }}>
+                🧰 Batch multi-ordres limit Binance
+              </h3>
+              <p style={{ color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.5 }}>
+                Compose jusqu’à 10 ordres limit, auto-calcul en notional, envoi séquentiel sécurisé.
+              </p>
+            </div>
+            <div
+              style={{
+                padding: '8px 14px',
+                borderRadius: '999px',
+                border: '1px solid #13304b',
+                color: '#38bdf8',
+                fontWeight: 600,
+                background: 'rgba(8, 47, 73, 0.35)'
+              }}
+            >
+              Jusqu’à {BINANCE_MAX_ORDER_FORMS} ordres
+            </div>
+          </div>
+
           <div
             style={{
               display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'space-between',
-              gap: '16px',
-              flexWrap: 'wrap'
+              flexWrap: 'wrap',
+              gap: '12px',
+              marginTop: '16px'
             }}
           >
-            <div style={{ flex: 1 }}>
-              <h3 style={{ color: '#f0fdfa', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-                🎯 Composer des ordres Binance
+            <div style={{ flex: 1, minWidth: '260px' }}>
+              <h3 style={{ color: '#f0f9ff', margin: 0, fontSize: '16px', fontWeight: 600 }}>
+                Tokens actifs ({binanceOrderForms.length})
               </h3>
               <p style={{ color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.5 }}>
                 Sélectionne tes tokens <strong>:binance</strong> dans Ma Cuisine, ajuste taille, prix limite et côté
@@ -2882,6 +3033,28 @@ export default function Page2() {
           )}
         </div>
       </div>
+    </>
+  )
+
+  return (
+    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Header */}
+      <div style={{ marginBottom: '32px' }}>
+        <h1 style={{ 
+          color: '#e5e7eb', 
+          fontSize: '32px', 
+          fontWeight: 'bold',
+          margin: 0,
+          marginBottom: '8px'
+        }}>
+          Ma Cuisine 👨🏼‍🍳
+        </h1>
+        <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
+          Simulateur de portfolio • Optimisez vos allocations
+        </p>
+      </div>
+
+      {/* Contrôle Binance Spot – rendu via renderBinanceSpotControls() en bas de page */}
 
       {/* Bouton Hyperliquid Testnet */}
       <div
@@ -3335,8 +3508,39 @@ export default function Page2() {
             </div>
           </div>
 
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap',
+              marginBottom: '12px'
+            }}
+          >
+            <label style={{ color: '#cbd5f5', fontSize: '14px', fontWeight: 600 }}>
+              Fenêtre d'analyse
+            </label>
+            <input
+              type="range"
+              min="5"
+              max="90"
+              step="5"
+              value={fundingWindowDays}
+              onChange={(e) => setFundingWindowDays(Number(e.target.value))}
+              style={{ flex: 1 }}
+            />
+            <span style={{ color: '#94a3b8', fontSize: '14px', minWidth: '90px' }}>
+              {fundingWindowDays} jours
+            </span>
+          </div>
+
           <div style={{ marginBottom: '16px' }}>
-            <FundingMultiChart pairs={fundingDisplayPairs} days={20} />
+            <FundingMultiChart
+              pairs={fundingDisplayPairs}
+              days={20}
+              visibleDays={fundingWindowDays}
+              weightsMap={fundingWeightsMap}
+            />
           </div>
 
           <div
@@ -3794,6 +3998,8 @@ export default function Page2() {
           </div>
         </div>
       )}
+
+      {renderBinanceSpotControls()}
     </div>
   )
 }

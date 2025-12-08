@@ -1,6 +1,6 @@
-export const APP_VERSION = 'V00.01.02' as const
+export const APP_VERSION = 'V00.01.03' as const
 
 export const VERSION_METADATA = {
   label: APP_VERSION,
-  updatedAt: '2025-12-08T12:55:08.952Z'
+  updatedAt: '2025-12-08T15:24:03.551Z'
 } as const

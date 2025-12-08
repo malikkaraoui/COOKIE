@@ -15,3 +15,4 @@ export { runFundingStrategyTick } from "./handlers/strategy/runFundingStrategyTi
 export { getFundingStrategyState } from "./handlers/strategy/getFundingStrategyState";
 export { upsertFundingStrategyState } from "./handlers/strategy/upsertFundingStrategyState";
 export { fundingMetrics } from "./handlers/fundingMetrics";
+export { hyperliquidInfoProxy } from "./handlers/hyperliquidInfoProxy";
