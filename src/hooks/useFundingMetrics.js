@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { fetchFundingMetrics } from '../lib/funding'
 
+const REFRESH_INTERVAL_MS = 60_000
+
 export function useFundingMetrics(symbol, days = 20) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -8,32 +10,52 @@ export function useFundingMetrics(symbol, days = 20) {
 
   useEffect(() => {
     if (!symbol) {
+      setData(null)
+      setError(null)
       return undefined
     }
 
-    const controller = new AbortController()
+    let currentController = new AbortController()
+    let disposed = false
 
-    async function fetchMetrics() {
+    const run = async (showLoader = true) => {
+      if (currentController) {
+        currentController.abort()
+      }
+      currentController = new AbortController()
+
       try {
-        setLoading(true)
-        setError(null)
-        const payload = await fetchFundingMetrics(symbol, days, controller.signal)
-        setData(payload)
+        if (showLoader) {
+          setLoading(true)
+          setError(null)
+        }
+        const payload = await fetchFundingMetrics(symbol, days, currentController.signal)
+        if (!disposed) {
+          setData(payload)
+          setError(null)
+        }
       } catch (err) {
-        if (err.name === 'AbortError') {
+        if (err?.name === 'AbortError' || disposed) {
           return
         }
-        setError(err.message ?? 'Erreur inconnue')
+        setError(err?.message ?? 'Erreur inconnue')
         setData(null)
       } finally {
-        setLoading(false)
+        if (!disposed) {
+          setLoading(false)
+        }
       }
     }
 
-    fetchMetrics()
+    run()
+    const intervalId = setInterval(() => run(false), REFRESH_INTERVAL_MS)
 
     return () => {
-      controller.abort()
+      disposed = true
+      if (currentController) {
+        currentController.abort()
+      }
+      clearInterval(intervalId)
     }
   }, [symbol, days])
 

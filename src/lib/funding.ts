@@ -9,7 +9,48 @@ export async function fetchFundingMetrics(symbol: string, days = 20, signal?: Ab
   url.searchParams.set('symbol', symbol)
   url.searchParams.set('days', String(days))
 
-  const res = await fetch(url.toString(), { signal })
-  if (!res.ok) throw new Error(`Funding HTTP ${res.status}`)
-  return res.json()
+  const maxAttempts = 3
+  let attempt = 0
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const res = await fetch(url.toString(), { signal })
+
+      if (!res.ok) {
+        const bodyText = await res.text()
+        let message = `Funding HTTP ${res.status}`
+        try {
+          const payload = bodyText ? JSON.parse(bodyText) : null
+          message = payload?.error?.message ?? message
+        } catch (err) {
+          // ignore JSON parsing error and keep default message
+        }
+
+        const error = new Error(message)
+        ;(error as any).status = res.status
+
+        if (res.status >= 500 && attempt < maxAttempts - 1) {
+          attempt += 1
+          await new Promise((resolve) => setTimeout(resolve, 300 * attempt))
+          continue
+        }
+
+        throw error
+      }
+
+      return res.json()
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        throw err
+      }
+
+      const status = err?.status ?? 0
+      if (status < 500 || attempt >= maxAttempts - 1) {
+        throw err
+      }
+
+      attempt += 1
+      await new Promise((resolve) => setTimeout(resolve, 300 * attempt))
+    }
+  }
 }

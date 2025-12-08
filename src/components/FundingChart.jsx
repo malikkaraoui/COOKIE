@@ -13,24 +13,22 @@ export default function FundingChart({ metrics }) {
     return null
   }
 
-  const data = metrics.points.map((point) => ({
-    time: new Date(point.time).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
-    ratePct: point.rate * 100
-  }))
+  const data = metrics.points.map((point, index) => {
+    const date = new Date(point.time)
+    return {
+      index,
+      label: date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
+      ratePct: point.rate * 100
+    }
+  })
 
   return (
-    <div style={{ width: '100%', height: 160 }}>
+    <div style={{ width: '100%', height: 150 }}>
       <ResponsiveContainer>
-        <LineChart data={data} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-          <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} axisLine={false} />
-          <YAxis
-            tick={{ fontSize: 10, fill: '#94a3b8' }}
-            tickFormatter={(v) => `${v.toFixed(2)}%`}
-            width={55}
-            axisLine={false}
-            tickLine={false}
-          />
+        <LineChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" opacity={0.08} />
+          <XAxis dataKey="index" hide />
+          <YAxis hide domain={['auto', 'auto']} />
           <Tooltip
             contentStyle={{
               background: '#020617',
@@ -39,7 +37,10 @@ export default function FundingChart({ metrics }) {
               color: '#e2e8f0'
             }}
             formatter={(value) => `${Number(value).toFixed(4)} %`}
-            labelFormatter={(label) => `Funding du ${label}`}
+            labelFormatter={(_, payload) => {
+              const label = payload?.[0]?.payload?.label
+              return label ? `Funding du ${label}` : ''
+            }}
           />
           <Line
             type="monotone"

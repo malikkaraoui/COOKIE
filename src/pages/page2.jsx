@@ -17,7 +17,7 @@ import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import TokenFundingCard from '../components/TokenFundingCard'
-import { FUNDING_URL } from '../lib/funding'
+import FundingMultiChart from '../components/FundingMultiChart'
 import { 
   placeHyperliquidTestOrder, 
   fetchHyperliquidOpenOrders,
@@ -456,6 +456,8 @@ export default function Page2() {
     })
     return entries
   }, [orderableSymbols])
+
+  const fundingDisplayPairs = useMemo(() => fundingPairs.slice(0, 4), [fundingPairs])
 
   const binanceSelectedEntries = useMemo(() => {
     return selectedTokens.filter((entry) => entry?.toLowerCase().includes(':binance'))
@@ -3306,7 +3308,7 @@ export default function Page2() {
         )}
       </div>
 
-      {fundingPairs.length > 0 && (
+      {fundingDisplayPairs.length > 0 && (
         <div
           style={{
             background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
@@ -3330,13 +3332,11 @@ export default function Page2() {
               <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
                 📈 Funding rates temps réel
               </h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-                Courbes Binance {fundingPairs.length > 1 ? 'multi-tokens' : ''} calculées côté Cloud Function avec ccxt.
-              </p>
             </div>
-            <span style={{ color: '#38bdf8', fontSize: '14px' }}>
-              Alimenté par {FUNDING_URL}
-            </span>
+          </div>
+
+          <div style={{ marginBottom: '16px' }}>
+            <FundingMultiChart pairs={fundingDisplayPairs} days={20} />
           </div>
 
           <div
@@ -3346,7 +3346,7 @@ export default function Page2() {
               gap: '16px'
             }}
           >
-            {fundingPairs.map((item) => (
+            {fundingDisplayPairs.map((item) => (
               <TokenFundingCard
                 key={item.pairSymbol}
                 baseSymbol={item.baseSymbol}
