@@ -190,6 +190,7 @@ const {
   runFundingStrategyTick,
   getFundingStrategyState,
   upsertFundingStrategyState,
+  fundingMetrics,
 } = require("./src/index");
 
 exports.placeTestOrder = placeTestOrder;
@@ -207,3 +208,4 @@ exports.maybeCloseFundingPosition = maybeCloseFundingPosition;
 exports.runFundingStrategyTick = runFundingStrategyTick;
 exports.getFundingStrategyState = getFundingStrategyState;
 exports.upsertFundingStrategyState = upsertFundingStrategyState;
+exports.fundingMetrics = fundingMetrics;

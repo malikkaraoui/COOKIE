@@ -15,6 +15,7 @@
   "main": "index.js",
   "dependencies": {
     "@nktkas/hyperliquid": "^0.27.1",
+    "ccxt": "^4.3.74",
     "dotenv": "^17.2.3",
     "ethers": "^6.15.0",
     "firebase-admin": "^13.6.0",
