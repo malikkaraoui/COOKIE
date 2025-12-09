@@ -13,6 +13,7 @@ import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useTradeNotifications } from '../hooks/useTradeNotifications'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
+import { useHyperliquidAccount } from '../hooks/useHyperliquidAccount'
 import { useMarketData } from '../providers/MarketDataProvider'
 import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
@@ -436,6 +437,37 @@ export default function Page2() {
     notifyOrderClosedByWatcher,
     notifyOrderInOrderBook
   } = useTradeNotifications()
+
+  const hyperliquidAccount = useHyperliquidAccount({ pollIntervalMs: 25000 })
+  const {
+    status: hlStatus,
+    error: hlError,
+    lastUpdated: hlUpdatedAt,
+    totals: hlTotals,
+    spot: hlSpot,
+    perp: hlPerp,
+    hasWallet: hlHasWallet,
+    refetch: refetchHyperliquidAccount
+  } = hyperliquidAccount
+
+  const hyperliquidSummary = useMemo(() => {
+    const spot = hlSpot || { totalUsd: 0, availableUsd: 0, holdUsd: 0 }
+    const perp = hlPerp || { accountValue: 0, withdrawable: 0 }
+    const totals = hlTotals || null
+
+    const fallbackGlobal = (perp.accountValue ?? 0) + (spot.totalUsd ?? 0)
+    const fallbackAvailable = (perp.withdrawable ?? 0) + (spot.availableUsd ?? 0)
+
+    return {
+      spotTotal: spot.totalUsd ?? 0,
+      spotAvailable: spot.availableUsd ?? 0,
+      spotHold: spot.holdUsd ?? 0,
+      perpAccountValue: perp.accountValue ?? 0,
+      perpWithdrawable: perp.withdrawable ?? 0,
+      globalTotal: totals?.globalUsd ?? fallbackGlobal,
+      globalAvailable: totals?.availableUsd ?? fallbackAvailable
+    }
+  }, [hlSpot, hlPerp, hlTotals])
 
   const selectedSymbols = useMemo(() => {
     return selectedTokens.map(symbolWithSource => {
@@ -1964,6 +1996,218 @@ export default function Page2() {
     }
   }
 
+  const renderHyperliquidAccountSummary = () => {
+    const isLoading = hlStatus === 'loading'
+    const isRefreshing = hlStatus === 'refreshing'
+    const isError = hlStatus === 'error'
+    const isIdle = hlStatus === 'idle'
+    const showConnectCallout = !hlHasWallet
+    const hasMetrics = !showConnectCallout && Boolean(hyperliquidSummary)
+
+    const formatUsdc = (value, digits = 2) => {
+      return `${formatNumericString(value ?? 0, {
+        maximumFractionDigits: digits,
+        preserveTinyValues: true,
+        limitHighValues: true
+      })} USDC`
+    }
+
+    const statusLabel = showConnectCallout
+      ? 'Wallet requis'
+      : isRefreshing
+        ? 'Actualisation…'
+        : isLoading || (isIdle && hlHasWallet)
+          ? 'Connexion…'
+          : isError
+            ? 'Erreur'
+            : 'À jour'
+
+    const statusColor = (() => {
+      if (isError) return '#f87171'
+      if (isRefreshing) return '#facc15'
+      if (isLoading || isIdle) return '#60a5fa'
+      return '#34d399'
+    })()
+
+    return (
+      <div
+        style={{
+          background: 'linear-gradient(125deg, #040814 0%, #02040a 35%, #0b1627 100%)',
+          borderRadius: '18px',
+          padding: '24px',
+          marginBottom: '24px',
+          border: '1px solid rgba(148, 163, 184, 0.1)',
+          boxShadow: '0 25px 60px rgba(3, 7, 18, 0.65)'
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '16px',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            marginBottom: '20px'
+          }}
+        >
+          <div style={{ flex: 1, minWidth: '220px' }}>
+            <p style={{ color: '#e2e8f0', margin: 0, fontSize: '20px', fontWeight: 700 }}>
+              Compte Hyperliquid
+            </p>
+            <p style={{ color: '#94a3b8', marginTop: '6px', marginBottom: 0, lineHeight: 1.4 }}>
+              Agrégation en temps réel des endpoints <code style={{ fontSize: '13px', color: '#cbd5f5' }}>clearinghouseState</code>
+              {' '}et <code style={{ fontSize: '13px', color: '#cbd5f5' }}>spotClearinghouseState</code> (API officielle Hyperliquid).
+              Toutes les valeurs sont exprimées en USDC.
+            </p>
+          </div>
+          <div
+            style={{
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'center'
+            }}
+          >
+            <div
+              style={{
+                padding: '6px 14px',
+                borderRadius: '999px',
+                border: `1px solid ${statusColor}33`,
+                color: statusColor,
+                fontWeight: 600,
+                fontSize: '13px'
+              }}
+            >
+              {statusLabel}
+            </div>
+            <button
+              onClick={refetchHyperliquidAccount}
+              disabled={isLoading || showConnectCallout}
+              style={{
+                padding: '10px 16px',
+                borderRadius: '12px',
+                border: '1px solid #1f2d3f',
+                background: isLoading || showConnectCallout ? '#1f2937' : '#2563eb',
+                color: '#f8fafc',
+                cursor: isLoading || showConnectCallout ? 'not-allowed' : 'pointer',
+                fontWeight: 600,
+                minWidth: '120px'
+              }}
+            >
+              {isLoading ? 'Connexion…' : 'Rafraîchir'}
+            </button>
+          </div>
+        </div>
+
+        {showConnectCallout ? (
+          <div
+            style={{
+              border: '1px dashed #1e2b3f',
+              borderRadius: '14px',
+              padding: '18px',
+              background: 'rgba(15, 23, 42, 0.35)',
+              color: '#cbd5f5',
+              fontSize: '15px'
+            }}
+          >
+            Connecte ton wallet Reown / Hyperliquid pour synchroniser automatiquement ton compte testnet.
+            Une fois connecté, cette carte affichera ton solde spot, ton compte perps et le montant réellement retirable.
+          </div>
+        ) : (
+          <>
+            {hasMetrics && (
+              <>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '14px',
+                    marginBottom: '16px'
+                  }}
+                >
+                  {[{
+                    label: 'Valeur totale',
+                    value: formatUsdc(hyperliquidSummary?.globalTotal ?? 0, 2)
+                  }, {
+                    label: 'Montant disponible',
+                    value: formatUsdc(hyperliquidSummary?.globalAvailable ?? 0, 2)
+                  }].map((metric) => (
+                    <div
+                      key={metric.label}
+                      style={{
+                        borderRadius: '16px',
+                        border: '1px solid #192338',
+                        background: 'rgba(11, 20, 38, 0.8)',
+                        padding: '18px'
+                      }}
+                    >
+                      <p style={{ color: '#94a3b8', margin: 0, fontSize: '13px', letterSpacing: '0.08em' }}>
+                        {metric.label}
+                      </p>
+                      <p style={{ color: '#f8fafc', margin: '6px 0 0', fontSize: '26px', fontWeight: 700 }}>
+                        {metric.value}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: '14px'
+                  }}
+                >
+                  {[{
+                    title: 'Spot (non engagé)',
+                    main: formatUsdc(hyperliquidSummary?.spotAvailable ?? 0, 2),
+                    sub: `Total : ${formatUsdc(hyperliquidSummary?.spotTotal ?? 0, 2)}`
+                  }, {
+                    title: 'Perp (compte marge)',
+                    main: formatUsdc(hyperliquidSummary?.perpAccountValue ?? 0, 2),
+                    sub: `Retirable : ${formatUsdc(hyperliquidSummary?.perpWithdrawable ?? 0, 2)}`
+                  }].map((card) => (
+                    <div
+                      key={card.title}
+                      style={{
+                        borderRadius: '16px',
+                        border: '1px solid #1e2d44',
+                        background: 'rgba(7, 12, 22, 0.9)',
+                        padding: '16px'
+                      }}
+                    >
+                      <p style={{ color: '#cbd5f5', margin: 0, fontSize: '15px', fontWeight: 600 }}>{card.title}</p>
+                      <p style={{ color: '#f1f5f9', margin: '6px 0 0', fontSize: '20px', fontWeight: 700 }}>{card.main}</p>
+                      <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '13px' }}>{card.sub}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {hlError && (
+              <div
+                style={{
+                  marginTop: '16px',
+                  border: '1px solid rgba(248, 113, 113, 0.3)',
+                  borderRadius: '12px',
+                  padding: '12px',
+                  color: '#fecaca',
+                  background: 'rgba(185, 28, 28, 0.15)'
+                }}
+              >
+                {hlError}
+              </div>
+            )}
+
+            <p style={{ color: '#475569', marginTop: '14px', fontSize: '12px' }}>
+              Dernière synchro : {hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'} • Poll 25s côté client
+            </p>
+          </>
+        )}
+      </div>
+    )
+  }
+
   const renderBinanceSpotControls = () => (
     <>
       {/* Contrôle Binance Spot */}
@@ -3053,6 +3297,8 @@ export default function Page2() {
           Simulateur de portfolio • Optimisez vos allocations
         </p>
       </div>
+
+      {renderHyperliquidAccountSummary()}
 
       {/* Contrôle Binance Spot – rendu via renderBinanceSpotControls() en bas de page */}
 
