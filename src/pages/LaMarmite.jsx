@@ -8,29 +8,36 @@ import { useState, useEffect } from 'react'
 import { ChefHat, LogIn } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { saveUserVote, getUserVote } from '../lib/database/userService'
+import './LaMarmite.css'
+
+const HIGHLIGHT_PILLS = [
+  { label: 'Vous ne perdez jamais', variant: 'success' },
+  { label: 'La majorité a raison', variant: 'info' },
+  { label: 'Chaque vote est une leçon', variant: 'warning' },
+]
 
 export default function LaMarmite() {
   const { user } = useAuth()
-  
+
   // ID unique de la question du jour (format: Q-YYYY-MM-DD)
   const questionId = `Q-${new Date().toISOString().split('T')[0]}`
-  
+
   // Calculer le temps restant jusqu'à 19h Paris
   const calculateTimeLeft = () => {
     const now = new Date()
-    
+
     // Convertir en heure de Paris (UTC+1 ou UTC+2 selon DST)
     const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
-    
+
     // Définir 19h00 aujourd'hui
     const deadline = new Date(parisTime)
     deadline.setHours(19, 0, 0, 0)
-    
+
     // Si on est déjà après 19h, le vote est terminé
     if (parisTime >= deadline) {
       return 0
     }
-    
+
     // Calculer la différence en secondes
     const diff = Math.floor((deadline - parisTime) / 1000)
     return Math.max(0, diff)
@@ -41,7 +48,7 @@ export default function LaMarmite() {
     const now = new Date()
     const parisTime = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
     const hour = parisTime.getHours()
-    
+
     return hour >= 8 && hour < 19
   }
 
@@ -55,14 +62,16 @@ export default function LaMarmite() {
   // Charger le vote existant de l'utilisateur au montage
   useEffect(() => {
     if (user) {
-      getUserVote(user.uid, questionId).then(vote => {
-        if (vote) {
-          setSelectedVote(vote.choice)
-          setHasVoted(true)
-        }
-      }).catch(err => {
-        console.error('Erreur chargement vote:', err)
-      })
+      getUserVote(user.uid, questionId)
+        .then((vote) => {
+          if (vote) {
+            setSelectedVote(vote.choice)
+            setHasVoted(true)
+          }
+        })
+        .catch((err) => {
+          console.error('Erreur chargement vote:', err)
+        })
     }
   }, [user, questionId])
 
@@ -71,16 +80,16 @@ export default function LaMarmite() {
     const interval = setInterval(() => {
       const newTimeLeft = calculateTimeLeft()
       const newCanVote = isVotingTime()
-      
+
       setTimeLeft(newTimeLeft)
       setCanVote(newCanVote)
-      
+
       // Si le temps est écoulé ou hors plage horaire, on arrête le timer
       if (newTimeLeft === 0 || !newCanVote) {
         clearInterval(interval)
       }
     }, 1000)
-    
+
     return () => clearInterval(interval)
   }, [])
 
@@ -118,324 +127,136 @@ export default function LaMarmite() {
     }
 
     setIsLoading(true)
-    
+
     try {
       // Sauvegarder le vote dans Firebase
       await saveUserVote(user.uid, questionId, selectedVote)
-      
+
       setHasVoted(true)
       setShowLoginPrompt(false)
     } catch (error) {
       console.error('Erreur lors du vote:', error)
-      alert('Erreur lors de l\'enregistrement du vote. Veuillez réessayer.')
+      alert("Erreur lors de l'enregistrement du vote. Veuillez réessayer.")
     } finally {
       setIsLoading(false)
     }
   }
 
+  const timerLabel = !canVote ? 'Vote fermé' : `Expire dans ${formatTime(timeLeft)}`
+  const timerStatus = !canVote ? 'danger' : timeLeft < 3600 ? 'warning' : 'success'
+
+  const baseChoiceClasses = (key) => {
+    const classes = ['marmite-choice', `marmite-choice--${key}`]
+    if (selectedVote === key) classes.push('is-selected')
+    if (hasVoted || !canVote) classes.push('is-disabled')
+    return classes.join(' ')
+  }
+
   return (
-    <div style={{ 
-      padding: '60px 40px',
-      maxWidth: '1000px',
-      margin: '0 auto',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '40px'
-    }}>
-      {/* Titre */}
-      <h1 style={{ 
-        fontSize: '48px', 
-        fontWeight: 'bold',
-        color: '#fff',
-        textAlign: 'center',
-        margin: 0
-      }}>
-        La Marmite Communautaire
-      </h1>
+    <div className="marmite-page">
+      <section className="marmite-hero">
+        <div className="marmite-hero__eyebrow">L’épargne collective qui vous rapporte</div>
+        <h1>
+          La <span>Marmite</span> Communautaire
+        </h1>
+        <p>
+          Le mix parfait entre <strong>Polymarket</strong> et l’épargne communautaire. Votez votre conviction, mais votre épargne suit toujours la majorité.
+        </p>
+        <div className="marmite-hero__pills">
+          {HIGHLIGHT_PILLS.map((pill) => (
+            <span key={pill.label} className={`marmite-pill marmite-pill--${pill.variant}`}>
+              {pill.label}
+            </span>
+          ))}
+        </div>
+      </section>
 
-      {/* Description */}
-      <p style={{ 
-        color: '#94a3b8', 
-        fontSize: '18px',
-        textAlign: 'center',
-        lineHeight: '1.6',
-        maxWidth: '700px',
-        margin: 0
-      }}>
-        Une épargne gérée par la sagesse collective. Votez chaque jour, participez aux décisions, et partagez les rendements avec toute la communauté.
-      </p>
-
-      {/* Marmite géante */}
-      <div style={{
-        fontSize: '180px',
-        lineHeight: 1,
-        filter: 'drop-shadow(0 20px 40px rgba(0,0,0,0.5))',
-        animation: 'float 3s ease-in-out infinite',
-        marginTop: '20px',
-        marginBottom: '20px'
-      }}>
-        🍲
-      </div>
-
-      {/* Section Vote */}
-      <div style={{
-        width: '100%',
-        maxWidth: '800px',
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        borderRadius: '24px',
-        padding: '40px',
-        boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
-        border: '1px solid #334155'
-      }}>
-        {/* Header Question */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          marginBottom: '24px',
-          paddingBottom: '24px',
-          borderBottom: '1px solid #334155'
-        }}>
-          <ChefHat size={32} color="#f59e0b" strokeWidth={2} />
-          <div style={{ flex: 1 }}>
-            <h2 style={{ 
-              color: '#f59e0b', 
-              fontSize: '24px',
-              fontWeight: 'bold',
-              margin: 0,
-              marginBottom: '8px'
-            }}>
-              Question du Chef
-            </h2>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px',
-              color: '#94a3b8',
-              fontSize: '14px'
-            }}>
-              <span>Vote quotidien (8h-19h)</span>
-              <span>•</span>
-              {!canVote ? (
-                <span style={{ color: '#ef4444', fontWeight: '600' }}>
-                  Vote fermé
-                </span>
-              ) : (
-                <span style={{ 
-                  color: timeLeft < 3600 ? '#ef4444' : '#22c55e',
-                  fontWeight: '600'
-                }}>
-                  Expire dans {formatTime(timeLeft)}
-                </span>
-              )}
-            </div>
+      <section className="marmite-body">
+        <div className="marmite-illustration-card">
+          <div className="marmite-illustration-icon" aria-hidden="true">
+            🍲
           </div>
+          <p>
+            La communauté mijote chaque jour la meilleure stratégie. Votre vote oriente la recette, votre épargne suit le plat gagnant.
+          </p>
         </div>
 
-        {/* Question */}
-        <h3 style={{
-          color: '#e5e7eb',
-          fontSize: '22px',
-          fontWeight: '600',
-          marginBottom: '32px',
-          textAlign: 'center'
-        }}>
-          Quelle stratégie pour la marmite aujourd'hui ?
-        </h3>
-
-        {/* Options de vote */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Message hors horaire */}
-          {!canVote && !hasVoted && (
-            <div style={{
-              padding: '20px',
-              background: 'rgba(239, 68, 68, 0.1)',
-              border: '2px solid #ef4444',
-              borderRadius: '12px',
-              color: '#ef4444',
-              textAlign: 'center',
-              fontSize: '14px',
-              fontWeight: '600',
-              marginBottom: '8px'
-            }}>
-              ⏰ Les votes sont ouverts de 8h00 à 19h00 (heure de Paris)
-            </div>
-          )}
-
-          {/* Prompt connexion */}
-          {showLoginPrompt && !user && (
-            <div style={{
-              padding: '20px',
-              background: 'rgba(59, 130, 246, 0.1)',
-              border: '2px solid #3b82f6',
-              borderRadius: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              marginBottom: '8px'
-            }}>
-              <LogIn size={24} color="#3b82f6" />
-              <div>
-                <div style={{ color: '#3b82f6', fontWeight: '600', marginBottom: '4px' }}>
-                  Connexion requise
-                </div>
-                <div style={{ color: '#94a3b8', fontSize: '14px' }}>
-                  Veuillez vous connecter pour valider votre vote et participer aux décisions de la communauté.
-                </div>
+        <div className="marmite-vote-card">
+          <header className="marmite-card__header">
+            <div>
+              <p className="marmite-card__eyebrow">Question du Chef</p>
+              <h2>Quelle stratégie pour la marmite aujourd’hui&nbsp;?</h2>
+              <div className="marmite-card__meta">
+                <span>Vote quotidien (8h-19h)</span>
+                <span aria-hidden="true">•</span>
+                <span className={`marmite-chip marmite-chip--${timerStatus}`}>{timerLabel}</span>
               </div>
             </div>
+            <div className="marmite-card__icon" aria-hidden="true">
+              <ChefHat size={32} strokeWidth={2} />
+            </div>
+          </header>
+
+          <div className="marmite-card__question">
+            Votez selon votre conviction pour guider la gestion quotidienne de l’épargne.
+          </div>
+
+          <div className="marmite-choice-group">
+            {!canVote && !hasVoted && (
+              <div className="marmite-alert marmite-alert--schedule">
+                ⏰ Les votes sont ouverts de 8h00 à 19h00 (heure de Paris)
+              </div>
+            )}
+
+            {showLoginPrompt && !user && (
+              <div className="marmite-alert marmite-alert--login">
+                <LogIn size={20} />
+                <div>
+                  <strong>Connexion requise</strong>
+                  <span>Identifiez-vous pour enregistrer votre vote et suivre son impact.</span>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="button"
+              className={baseChoiceClasses('prudent')}
+              onClick={() => handleSelectVote('prudent')}
+              disabled={hasVoted || !canVote}
+            >
+              <div className="marmite-choice__title">🛡️ Version mijotée (Douce)</div>
+              <div className="marmite-choice__description">
+                On reste prudent et on laisse la marmite sur feu doux. Stratégie défensive avec plus de cash et d’obligations.
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className={baseChoiceClasses('risque')}
+              onClick={() => handleSelectVote('risque')}
+              disabled={hasVoted || !canVote}
+            >
+              <div className="marmite-choice__title">🌶️ Version relevée (Piment)</div>
+              <div className="marmite-choice__description">
+                On ajoute une pincée de piment pour intensifier la stratégie et chercher davantage de rendement côté crypto et actions tech.
+              </div>
+            </button>
+          </div>
+
+          {!hasVoted && canVote && (
+            <button
+              type="button"
+              className={`marmite-cta ${!selectedVote || isLoading ? 'is-disabled' : ''}`}
+              onClick={handleConfirmVote}
+              disabled={!selectedVote || isLoading}
+            >
+              {isLoading ? '⏳ Enregistrement…' : '✅ Valider mon vote'}
+            </button>
           )}
 
-          {/* Option 1 - Prudent */}
-          <button
-            onClick={() => handleSelectVote('prudent')}
-            disabled={hasVoted || !canVote}
-            style={{
-              background: selectedVote === 'prudent' 
-                ? 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' 
-                : 'linear-gradient(135deg, #334155 0%, #1e293b 100%)',
-              border: selectedVote === 'prudent' ? '2px solid #22c55e' : '2px solid #475569',
-              borderRadius: '16px',
-              padding: '24px',
-              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
-              transition: 'all 0.3s ease',
-              opacity: (hasVoted && selectedVote !== 'prudent') || !canVote ? 0.5 : 1,
-              textAlign: 'left'
-            }}
-            onMouseEnter={(e) => {
-              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
-            }}
-            onMouseLeave={(e) => {
-              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
-            }}
-          >
-            <div style={{ 
-              color: selectedVote === 'prudent' ? '#fff' : '#e5e7eb', 
-              fontSize: '16px',
-              fontWeight: '600',
-              marginBottom: '8px'
-            }}>
-              🛡️ Feu doux - Stratégie prudente
-            </div>
-            <div style={{ 
-              color: selectedVote === 'prudent' ? '#f0fdf4' : '#94a3b8', 
-              fontSize: '14px',
-              lineHeight: '1.5'
-            }}>
-              On reste prudent et on laisse la marmite à feu doux. Stratégie défensive avec plus de cash et d'obligations.
-            </div>
-          </button>
-
-          {/* Option 2 - Risqué */}
-          <button
-            onClick={() => handleSelectVote('risque')}
-            disabled={hasVoted || !canVote}
-            style={{
-              background: selectedVote === 'risque' 
-                ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' 
-                : 'linear-gradient(135deg, #334155 0%, #1e293b 100%)',
-              border: selectedVote === 'risque' ? '2px solid #ef4444' : '2px solid #475569',
-              borderRadius: '16px',
-              padding: '24px',
-              cursor: (hasVoted || !canVote) ? 'not-allowed' : 'pointer',
-              transition: 'all 0.3s ease',
-              opacity: (hasVoted && selectedVote !== 'risque') || !canVote ? 0.5 : 1,
-              textAlign: 'left'
-            }}
-            onMouseEnter={(e) => {
-              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(8px)'
-            }}
-            onMouseLeave={(e) => {
-              if (!hasVoted && canVote) e.currentTarget.style.transform = 'translateX(0)'
-            }}
-          >
-            <div style={{ 
-              color: selectedVote === 'risque' ? '#fff' : '#e5e7eb', 
-              fontSize: '16px',
-              fontWeight: '600',
-              marginBottom: '8px'
-            }}>
-              🌶️ Feu vif - Stratégie offensive
-            </div>
-            <div style={{ 
-              color: selectedVote === 'risque' ? '#fef2f2' : '#94a3b8', 
-              fontSize: '14px',
-              lineHeight: '1.5'
-            }}>
-              On ajoute une pincée de piment et on augmente le risque pour chercher plus de rendement. Plus d'action tech et de crypto.
-            </div>
-          </button>
+          {hasVoted && user && <div className="marmite-confirmation">✅ Vote enregistré ! Merci !</div>}
         </div>
-
-        {/* Bouton de validation */}
-        {!hasVoted && canVote && (
-          <button
-            onClick={handleConfirmVote}
-            disabled={!selectedVote || isLoading}
-            style={{
-              marginTop: '24px',
-              width: '100%',
-              padding: '20px',
-              background: selectedVote && !isLoading
-                ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)'
-                : 'linear-gradient(135deg, #475569 0%, #334155 100%)',
-              border: 'none',
-              borderRadius: '16px',
-              color: '#fff',
-              fontSize: '18px',
-              fontWeight: 'bold',
-              cursor: selectedVote && !isLoading ? 'pointer' : 'not-allowed',
-              transition: 'all 0.3s ease',
-              opacity: !selectedVote || isLoading ? 0.5 : 1,
-              boxShadow: selectedVote && !isLoading ? '0 8px 24px rgba(59, 130, 246, 0.3)' : 'none'
-            }}
-            onMouseEnter={(e) => {
-              if (selectedVote && !isLoading) {
-                e.currentTarget.style.transform = 'translateY(-2px)'
-                e.currentTarget.style.boxShadow = '0 12px 32px rgba(59, 130, 246, 0.4)'
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (selectedVote && !isLoading) {
-                e.currentTarget.style.transform = 'translateY(0)'
-                e.currentTarget.style.boxShadow = '0 8px 24px rgba(59, 130, 246, 0.3)'
-              }
-            }}
-          >
-            {isLoading ? '⏳ Enregistrement...' : '✅ Valider mon vote'}
-          </button>
-        )}
-
-        {/* Confirmation vote */}
-        {hasVoted && user && (
-          <div style={{
-            marginTop: '24px',
-            padding: '16px',
-            background: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid #22c55e',
-            borderRadius: '12px',
-            color: '#22c55e',
-            textAlign: 'center',
-            fontSize: '14px',
-            fontWeight: '600'
-          }}>
-            ✅ Vote enregistré ! Merci !
-          </div>
-        )}
-      </div>
-
-      {/* Animation CSS */}
-      <style>{`
-        @keyframes float {
-          0%, 100% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-20px);
-          }
-        }
-      `}</style>
+      </section>
     </div>
   )
 }

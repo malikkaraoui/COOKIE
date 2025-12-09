@@ -25,47 +25,45 @@ export default function TokenFundingCard({ baseSymbol, pairSymbol, days = 20 }) 
   }, [metrics])
 
   return (
-    <div className="rounded-2xl bg-slate-950/70 p-4 flex flex-col gap-3 border border-slate-800/70">
-      <div className="flex items-center justify-between">
-        <p className="text-2xl font-semibold text-white drop-shadow-sm">{token}</p>
+    <div className="module-card">
+      <div className="module-card__head">
+        <div>
+          <p className="section-eyebrow" style={{ letterSpacing: '0.3em' }}>Funding</p>
+          <p className="module-card__title">{token}</p>
+        </div>
         {Number.isFinite(projectedApy) && (
-          <span className="text-sm font-semibold text-emerald-300 bg-emerald-500/10 px-3 py-1 rounded-full">
-            {formatPercent(projectedApy)}
-          </span>
+          <span className="module-card__badge">{formatPercent(projectedApy)}</span>
         )}
       </div>
 
-      {loading && <div className="text-xs text-slate-400">Chargement…</div>}
+      {loading && <div className="module-card__loading">Chargement…</div>}
+
       {error && (
-        <div className="text-xs text-red-400">Erreur&nbsp;: {String(error)}</div>
+        <div className="module-card__error">Erreur&nbsp;: {String(error)}</div>
       )}
 
       {metrics && !loading && !error && (
-        <div className="space-y-1 text-sm text-slate-300">
+        <div className="module-card__body">
           {Number.isFinite(projectedApy) && (
-            <p>
-              APY projeté ({days} j)&nbsp;:
-              <span className="text-emerald-300 font-semibold ml-1">
-                {formatPercent(projectedApy)}
-              </span>
-            </p>
+            <div className="module-card__stat">
+              <span>APY projeté ({days} j)</span>
+              <strong>{formatPercent(projectedApy)}</strong>
+            </div>
           )}
           {Number.isFinite(latestApy) && (
-            <p>
-              Dernier funding annualisé&nbsp;:
-              <span className="ml-1 font-medium text-slate-100">
-                {formatPercent(latestApy)}
-              </span>
-            </p>
+            <div className="module-card__stat">
+              <span>Dernier funding annualisé</span>
+              <strong>{formatPercent(latestApy)}</strong>
+            </div>
           )}
-          <p className="text-xs text-slate-500">
+          <div className="module-card__foot">
             Intervalles / jour&nbsp;: {metrics.intervalsPerDay?.toFixed(1) ?? '—'}
-          </p>
+          </div>
         </div>
       )}
 
       {!loading && !error && metrics?.points?.length === 0 && (
-        <p className="text-xs text-slate-400">Aucune donnée Binance disponible pour cette période.</p>
+        <div className="module-card__foot">Aucune donnée Binance disponible pour cette période.</div>
       )}
     </div>
   )

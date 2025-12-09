@@ -1,13 +1,14 @@
 import { useMemo, useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { ShieldCheck, Loader2, RefreshCw } from 'lucide-react'
+import { ShieldCheck, Loader2, RefreshCw, Copy, Star } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useUserProfile } from '../hooks/useUserProfile'
 import { getFundingMarketsSnapshot } from '../services/hyperliquidFunding'
-import { openFundingTrade, FUNDING_POSITIVE_THRESHOLD, FUNDING_NEGATIVE_THRESHOLD } from '../strategies/openFundingTrade'
+import { openFundingTrade } from '../strategies/openFundingTrade'
 import { listFundingTrades } from '../lib/trading/fundingTradeStore'
 import { getHyperliquidTokenSymbols } from '../config/tokenList'
 import { useHyperliquidAccount } from '../hooks/useHyperliquidAccount'
+import { INGREDIENTS } from '../config/ingredientsMatrix'
 
 const SUPPORTED_COINS = getHyperliquidTokenSymbols()
 const CAPITAL_MIN = 100
@@ -16,6 +17,47 @@ const CAPITAL_STEP = 50
 const THRESHOLD_MIN = 0.00005
 const FIXED_FUNDING_THRESHOLD = THRESHOLD_MIN
 const DEFAULT_LEVERAGE = 1
+const HYPERLIQUID_INGREDIENT_MAP = INGREDIENTS
+  .filter((ingredient) => ingredient.provider === 'hyperliquid')
+  .reduce((acc, ingredient) => {
+    acc[ingredient.tokenSymbol] = ingredient
+    return acc
+  }, {})
+
+const getIngredientMeta = (symbol) => HYPERLIQUID_INGREDIENT_MAP[symbol] || {
+  label: `${symbol} spécial`,
+  tokenSymbol: symbol,
+  category: 'Hyperliquid',
+  description: `Préparation dédiée à ${symbol}.`,
+  note: 'Recette en cours d’ajustement par la brigade.',
+  emoji: '🍲',
+  frequency: 'frequent',
+  tier: 'premium',
+}
+
+const TOP_STRATEGIES = [
+  {
+    rank: 1,
+    title: 'La Ratatouille Prudente',
+    trades: 3421,
+    rating: 4.9,
+    variant: 'gold',
+  },
+  {
+    rank: 2,
+    title: 'Le Bouillon Défensif',
+    trades: 2847,
+    rating: 4.8,
+    variant: 'silver',
+  },
+  {
+    rank: 3,
+    title: 'Le Gratin Dividendes',
+    trades: 2634,
+    rating: 4.8,
+    variant: 'bronze',
+  },
+]
 
 export default function BouillonDeLegumes() {
   const { user } = useAuth()
@@ -285,38 +327,69 @@ export default function BouillonDeLegumes() {
           const eligible = descriptor.tone !== 'flat'
           const isLoadingCoin = submittingCoin === market.coin
           const disabled = !eligible || isLoadingCoin || !user || !isPremium || profileLoading
+          const ingredient = getIngredientMeta(market.coin)
+          const actionButtonClass = [
+            'bouillon-ingredient-go',
+            descriptor.tone === 'short' && 'bouillon-ingredient-go--short',
+            descriptor.tone === 'long' && 'bouillon-ingredient-go--long',
+            descriptor.tone === 'flat' && 'bouillon-ingredient-go--flat',
+          ].filter(Boolean).join(' ')
 
           return (
             <article
               key={market.coin}
-              className={`bouillon-token-card bouillon-token-card--${descriptor.tone}`}
+              className={[
+                'ingredient-card',
+                'bouillon-ingredient-card',
+                ingredient.tier === 'premium' && 'ingredient-card--premium',
+                descriptor.tone && `bouillon-ingredient-card--${descriptor.tone}`,
+              ].filter(Boolean).join(' ')}
             >
-              <div className="bouillon-token-card-head">
-                <div>
-                  <h3>{market.coin}</h3>
-                  <p className="bouillon-token-price">{formatUsd(market.markPrice)}</p>
+              <header className="ingredient-card__head">
+                <div className="ingredient-card__title">
+                  <span className="ingredient-card__emoji" aria-hidden="true">{ingredient.emoji}</span>
+                  <div>
+                    <p className="ingredient-card__label">{ingredient.label}</p>
+                    <p className="ingredient-card__code">{market.coin}</p>
+                  </div>
                 </div>
-                <span className="bouillon-token-label">{descriptor.label}</span>
+              </header>
+
+              <div className="ingredient-card__meta">
+                <span className="ingredient-card__category">{ingredient.category}</span>
               </div>
-              <div className="bouillon-token-metric">
-                <span>Funding actuel</span>
-                <strong>{fundingPct}% / h</strong>
+
+              <p className="ingredient-card__description">{ingredient.description}</p>
+
+              <div className="bouillon-ingredient-metrics">
+                <div>
+                  <span>Rythme actuel</span>
+                  <strong>
+                    <span className="bouillon-ingredient-rate-value">{fundingPct}%</span>
+                    <span className="bouillon-ingredient-rate-period">/ h</span>
+                  </strong>
+                </div>
               </div>
-              <p className="bouillon-token-plan">{descriptor.plan}</p>
-              <button
-                type="button"
-                className={`bouillon-token-go ${descriptor.tone === 'short' ? 'bouillon-token-go--short' : ''}`}
-                onClick={() => handleOpenFunding(market.coin)}
-                disabled={disabled}
-              >
-                {isLoadingCoin ? (
-                  <>
-                    <Loader2 className="bouillon-spinner" size={16} /> Envoi…
-                  </>
-                ) : (
-                  'GO'
-                )}
-              </button>
+
+              <footer className="ingredient-card__footer bouillon-ingredient-card__footer">
+                <button
+                  type="button"
+                  className={['ingredient-card__action', 'ingredient-card__action--add', 'bouillon-ingredient-card__action', actionButtonClass].join(' ')}
+                  onClick={() => handleOpenFunding(market.coin)}
+                  disabled={disabled}
+                >
+                  {isLoadingCoin ? (
+                    <>
+                      <Loader2 className="bouillon-spinner" size={16} /> Envoi…
+                    </>
+                  ) : (
+                    <>
+                      <span className="bouillon-ingredient-go__label">{descriptor.label}</span>
+                      <span className="bouillon-ingredient-go__cta">GO</span>
+                    </>
+                  )}
+                </button>
+              </footer>
             </article>
           )
         })}
@@ -326,16 +399,36 @@ export default function BouillonDeLegumes() {
 
   return (
     <div className="bouillon-page">
-      <section className="bouillon-intro">
-        <div>
-          <p className="bouillon-eyebrow">Funding Hyperliquid</p>
+      <section className="bouillon-hero">
+        <div className="bouillon-hero__copy">
+          <p className="bouillon-hero__eyebrow">Funding Hyperliquid</p>
           <h1>Bouillon de légumes</h1>
-          <p className="bouillon-intro-text">
-            Ici, tu testes et ajustes manuellement ta prise de funding. Le watcher COOKIE n’ouvre jamais de position : il surveille uniquement les GO que tu envoies et les ferme si le financement n’est plus intéressant ou si la cible est atteinte.
+          <p className="bouillon-hero__desc">
+            Thermostat de mijotage réglé au feu doux : ce réglage reste scellé par COOKIE pour garder la préparation sous contrôle. Tant que la cuisson reste stable, le commis automatique surveille et referme le couvercle si la marmite recommence à s’emballer.
           </p>
-          <div className="bouillon-intro-tags">
+          <div className="bouillon-hero__pills">
             <span><ShieldCheck size={16} /> Premium requis</span>
-            <span>Watcher = surveillance & sorties automatiques</span>
+            <span>Watcher = sorties automatiques</span>
+            <span>Seuil COOKIE : {minFundingThresholdPct} %</span>
+          </div>
+        </div>
+        <div className="bouillon-hero__podium">
+          <p className="bouillon-podium__eyebrow">Podium des recettes préférées</p>
+          <div className="bouillon-podium">
+            {TOP_STRATEGIES.map((recipe) => (
+              <article key={recipe.title} className={`bouillon-podium-card bouillon-podium-card--${recipe.variant}`}>
+                <span className="bouillon-podium-card__medal">{recipe.rank}</span>
+                <h3>{recipe.title}</h3>
+                <div className="bouillon-podium-card__stats">
+                  <span>
+                    <Copy size={16} /> {recipe.trades.toLocaleString('fr-FR')}
+                  </span>
+                  <span>
+                    <Star size={16} fill="currentColor" stroke="none" /> {recipe.rating.toFixed(1)}
+                  </span>
+                </div>
+              </article>
+            ))}
           </div>
         </div>
       </section>
@@ -393,13 +486,6 @@ export default function BouillonDeLegumes() {
               ) : (
                 'Connecte ton wallet Hyperliquid sur “Ma cuisine” pour synchroniser le solde disponible.'
               )}
-            </small>
-          </label>
-          <label className="bouillon-control">
-            <span>Seuil funding minimum</span>
-            <div className="bouillon-amount-value">{minFundingThresholdPct} %</div>
-            <small>
-              Seuil verrouillé sur la valeur minimale autorisée par COOKIE. En dessous, le bouton GO reste grisé. Le watcher n’ouvre jamais de trade : il surveille seulement tes positions et les ferme si le funding repasse sous cette barre.
             </small>
           </label>
         </div>
@@ -475,13 +561,3 @@ export default function BouillonDeLegumes() {
   )
 }
  
-function formatUsd(value) {
-  if (!Number.isFinite(value)) {
-    return '—'
-  }
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: value >= 100 ? 2 : 4,
-  }).format(value)
-}

@@ -137,113 +137,85 @@ export default function TokenTile({
     attemptAddToken()
   }
 
+  const cardClassNames = [
+    'token-card',
+    token.error && 'token-card--error',
+    isSelected && 'token-card--selected',
+  ].filter(Boolean).join(' ')
+
+  const dragStyle = draggable && !isMobile ? dragProps : {}
+  const dragAttributes = draggable && !isMobile
+    ? {
+        ...dragHandlers,
+        onDragStart: (e) => dragHandlers.onDragStart(e, selectionKey),
+      }
+    : {}
+
   return (
     <>
-    <div 
-      style={{ 
-        ...styles.card, 
-        ...(draggable && !isMobile ? dragProps : {}),
-        cursor: draggable ? (isMobile ? 'pointer' : 'grab') : 'default',
-        userSelect: 'none',
-        WebkitTapHighlightColor: 'transparent',
-        animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none'
-      }}
-      {...(draggable && !isMobile ? dragHandlers : {})}
-      onClick={isMobile && draggable ? handleClick : undefined}
-      onDragStart={draggable && !isMobile ? (e) => dragHandlers.onDragStart(e, selectionKey) : undefined}
-    >
-      <img 
-        src={iconPath} 
-        alt={symbol} 
-        width={36} 
-        height={36} 
-        style={styles.icon}
-        onError={handleError}
-      />
-      <div style={styles.content}>
-        <div style={styles.headerRow}>
-          <div style={styles.name}>{token.name}</div>
-          <span style={styles.sourceBadge}>{sourceLabel}</span>
-        </div>
-        <div style={{ ...styles.priceRow }}>
-          <span style={styles.price}>{token.price != null ? fmtUSD(token.price) : '—'}</span>
-          <span style={{ ...styles.delta, color }}>
-            {hasDelta ? `${fmtSignedAbs(token.deltaPct, 2)}%` : '…'}
-          </span>
-        </div>
-        <div style={styles.metaRow}>
-          {token.error && <span style={{ color: '#ef4444' }}>⛔ {token.error}</span>}
-          {!token.error && (
-            <span>
-              <span style={{ color: token.status === 'live' ? '#22c55e' : '#94a3b8' }}>{statusLabel}</span>
-              {' • '}
-              <span style={{ color: '#64748b' }}>Δ {hasDelta ? fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 2) : '…'}</span>
-            </span>
-          )}
-        </div>
-      </div>
-      <button
-        type="button"
+      <div
+        className={cardClassNames}
         style={{
-          ...styles.actionButton,
-          background: isSelected ? '#7f1d1d' : '#064e3b',
-          borderColor: isSelected ? '#f87171' : '#34d399',
-          color: isSelected ? '#fecaca' : '#bbf7d0',
-          opacity: !isSelected && disableAdd ? 0.4 : 1,
-          cursor: !isSelected && disableAdd ? 'not-allowed' : 'pointer',
+          cursor: draggable ? (isMobile ? 'pointer' : 'grab') : 'default',
+          userSelect: 'none',
+          WebkitTapHighlightColor: 'transparent',
+          animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none',
+          ...dragStyle,
         }}
-        onClick={handleActionClick}
-        onMouseDown={(e) => e.stopPropagation()}
-        onTouchStart={(e) => e.stopPropagation()}
-        disabled={!isSelected && disableAdd}
+        {...dragAttributes}
+        onClick={isMobile && draggable ? handleClick : undefined}
       >
-        {isSelected ? 'Retirer' : 'Ajouter'}
-      </button>
-    </div>
-    
-    {/* Toast notification */}
-    {toast && (
-      <Toast 
-        message={toast.message} 
-        type={toast.type} 
-        onClose={() => setToast(null)} 
-      />
-    )}
-  </>
-  )
-}
+        <div className="token-card__icon">
+          <img src={iconPath} alt={symbol} onError={handleError} />
+        </div>
 
-const styles = {
-  card: {
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr auto',
-    alignItems: 'center',
-    padding: '8px 10px',
-    background: '#0b1220',
-    color: '#e5e7eb',
-    borderRadius: 10,
-    border: '1px solid #1f2a3b',
-    width: '100%',
-    gap: 12,
-    minWidth: 0,
-  },
-  icon: { borderRadius: '50%', flexShrink: 0, boxShadow: '0 0 8px rgba(15,23,42,0.6)', width: 32, height: 32 },
-  content: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 },
-  headerRow: { display: 'flex', justifyContent: 'space-between', gap: 6, alignItems: 'center' },
-  name: { fontSize: 10, color: '#cbd5f5', textTransform: 'uppercase', letterSpacing: 0.4, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  sourceBadge: { fontSize: 9, padding: '1px 5px', borderRadius: 999, background: '#1d2537', color: '#94a3b8', border: '1px solid #2b354a' },
-  priceRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 },
-  price: { fontSize: 16, fontWeight: 700, lineHeight: 1.1 },
-  delta: { fontSize: 11 },
-  metaRow: { fontSize: 10, color: '#94a3b8', minHeight: 12 },
-  actionButton: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderStyle: 'solid',
-    padding: '4px 8px',
-    fontSize: 11,
-    fontWeight: 600,
-    transition: 'transform 0.15s ease, opacity 0.2s ease',
-    minWidth: 68,
-  },
+        <div className="token-card__body">
+          <div className="token-card__header">
+            <span className="token-card__symbol">{symbol}</span>
+            <div className="token-card__name" title={token.name}>{token.name}</div>
+            <span className="token-card__source">{sourceLabel}</span>
+          </div>
+
+          <div className="token-card__metrics">
+            <span className="token-card__price">{token.price != null ? fmtUSD(token.price) : '—'}</span>
+            <span className="token-card__delta" style={{ color }}>
+              {hasDelta ? `${fmtSignedAbs(token.deltaPct, 2)}%` : '…'}
+            </span>
+          </div>
+
+          <div className="token-card__meta">
+            {token.error ? (
+              <span style={{ color: '#b91c1c' }}>⛔ {token.error}</span>
+            ) : (
+              <>
+                <span style={{ color: token.status === 'live' ? '#22c55e' : '#94a3b8' }}>{statusLabel}</span>
+                <span>
+                  Δ {hasDelta ? fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 2) : '…'}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={['token-card__action', isSelected && 'token-card__action--remove'].filter(Boolean).join(' ')}
+          onClick={handleActionClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          disabled={!isSelected && disableAdd}
+        >
+          {isSelected ? 'Retirer' : 'Ajouter'}
+        </button>
+      </div>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+    </>
+  )
 }
