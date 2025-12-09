@@ -49,6 +49,19 @@ export default defineConfig([
     },
   },
   {
+    files: ['vite.config.js', 'tailwind.config.js', 'scripts/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  {
     files: ['src/dataconnect-generated/**/*.cjs.js'],
     languageOptions: {
       ecmaVersion: 2020,

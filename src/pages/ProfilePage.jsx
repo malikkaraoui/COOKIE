@@ -9,6 +9,7 @@ import { useAvatar } from '../hooks/useAvatar'
 import { calculateAge, extractFirstName, extractLastName } from '../lib/database/userService'
 import { useWalletIdentity } from '../hooks/useWalletIdentity'
 import { useReownProfile } from '../hooks/useReownProfile'
+import { AppKitConnectButton } from '../components/auth/AppKitConnectButton'
 import './ProfilePage.css'
 import XpProgressBar from '../components/XpProgressBar'
 
@@ -166,6 +167,16 @@ export default function ProfilePage() {
   }
 
   const isLoading = authLoading || profileLoading
+  const hasIdentity = Boolean(user || walletIdentity.isConnected)
+
+  useEffect(() => {
+    if (isLoading) return
+    if (hasIdentity) return
+
+    profileLogInfo('Aucune identité active sur la page profil, redirection vers /epicerie-fine')
+    navigate('/epicerie-fine', { replace: true, state: { redirectReason: 'profile-no-identity' } })
+  }, [hasIdentity, isLoading, navigate])
+
   if (isLoading && !walletIdentity.isConnected) {
     return (
       <div className="profile-page">
@@ -174,12 +185,11 @@ export default function ProfilePage() {
     )
   }
 
-  const hasIdentity = Boolean(user || walletIdentity.isConnected)
   if (!hasIdentity) {
     return (
       <div className="profile-page">
         <div className="profile-error">
-          Connecte-toi via Google ou Reown pour accéder à ton profil.
+          Connecte-toi via Reown pour accéder à ton profil.
         </div>
       </div>
     )
@@ -188,9 +198,6 @@ export default function ProfilePage() {
   const hasBirthDate = Boolean(baseProfile?.birthDate)
   const age = hasBirthDate ? calculateAge(new Date(baseProfile.birthDate)) : null
   const isPremium = Boolean(profile?.membership?.active && profile?.membership?.tier === 'premium')
-  const walletShort = walletIdentity.isConnected && walletIdentity.address
-    ? `${walletIdentity.address.slice(0, 6)}…${walletIdentity.address.slice(-4)}`
-    : null
 
   const showCompletionBanner = !isProfileComplete
 
@@ -210,8 +217,8 @@ export default function ProfilePage() {
             {isPremium && (
               <span 
                 className="premium-badge premium-badge--lg"
-                aria-label="Utilisateur premium"
-                title="COOKIE Premium actif"
+                aria-label="Mode Chef actif"
+                title="Mode Chef actif"
               >
                 ★
               </span>
@@ -223,9 +230,16 @@ export default function ProfilePage() {
           {hasBirthDate && age !== null && (
             <p className="profile-age">{age} ans</p>
           )}
-          {walletShort && (
-            <p className="profile-wallet-pill">Wallet connecté : <code>{walletShort}</code></p>
-          )}
+          <div className="profile-reown-module">
+            <AppKitConnectButton
+              label={walletIdentity.isConnected ? 'Gérer mon wallet' : 'Connecter mon wallet'}
+            />
+            <p className="profile-reown-hint">
+              {walletIdentity.isConnected
+                ? 'Tu peux changer de wallet ou gérer Reown ici.'
+                : 'Connecte ton wallet Reown pour débloquer toutes les fonctionnalités.'}
+            </p>
+          </div>
         </div>
 
         {showCompletionBanner && (

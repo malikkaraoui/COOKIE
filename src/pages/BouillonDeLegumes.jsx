@@ -18,7 +18,7 @@ const FIXED_FUNDING_THRESHOLD = THRESHOLD_MIN
 const DEFAULT_LEVERAGE = 1
 
 export default function BouillonDeLegumes() {
-  const { user, signInWithGoogle } = useAuth()
+  const { user } = useAuth()
   const { profile, loading: profileLoading } = useUserProfile()
   const hyperliquidAccount = useHyperliquidAccount({ pollIntervalMs: 25000 })
   const [capitalUsd, setCapitalUsd] = useState(500)
@@ -411,19 +411,13 @@ export default function BouillonDeLegumes() {
 
         {(!user || profileLoading) && (
           <div className="bouillon-alert bouillon-alert--info">
-            Connecte-toi avec Google pour envoyer un GO.
+            Connecte ton wallet via Reown pour envoyer un GO.
           </div>
         )}
         {user && !isPremium && !profileLoading && (
           <div className="bouillon-alert bouillon-alert--info">
             Cette fonctionnalité nécessite COOKIE Premium. <Link to="/stripe">Activer mon abonnement</Link>
           </div>
-        )}
-
-        {!user && (
-          <button type="button" className="bouillon-secondary" onClick={signInWithGoogle}>
-            Se connecter avec Google
-          </button>
         )}
       </section>
 

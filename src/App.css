@@ -23,39 +23,347 @@ body {
 
 /* TAP BAR */
 .topbar {
-  background: #6f5a72;
-  color: #ffffff;
+  background: #ffffff;
+  color: #0f172a;
   display: flex;
-  align-items: center;
-  padding: 0 24px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  align-items: flex-start;
+  padding: 14px 24px 16px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 .topbar-content {
   width: 100%;
+}
+
+.tapbar-shell {
   display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.tapbar-main {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 18px;
   justify-content: space-between;
 }
 
-.topbar-actions {
-  display: inline-flex;
+.tapbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.tapbar-logo {
+  width: 50px;
+  height: 50px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 2px solid rgba(249, 115, 22, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px rgba(249, 115, 22, 0.25);
+  padding: 6px;
+}
+
+.tapbar-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 12px;
+}
+
+.tapbar-brand-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tapbar-brand-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: 0.01em;
+}
+
+.tapbar-brand-subtitle {
+  font-size: 0.86rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.tapbar-stats {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+
+.tapbar-stat-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.07);
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  background: #fff8ef;
+  text-align: center;
+}
+
+.tapbar-stat-card--performance {
+  background: #f0fdf4;
+}
+
+.tapbar-stat-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 191, 88, 0.2);
+  color: #b45309;
+}
+
+.tapbar-stat-card--performance .tapbar-stat-icon {
+  background: rgba(52, 211, 153, 0.2);
+  color: #047857;
+}
+
+.tapbar-stat-card span {
+  display: block;
+  font-size: 0.72rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tapbar-stat-card strong {
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.tapbar-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.tapbar-bell {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tapbar-bell:hover {
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.4);
+}
+
+.tapbar-profile-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  cursor: pointer;
+  appearance: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.tapbar-profile-info:hover {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+
+.tapbar-profile-info:focus-visible {
+  outline: none;
+  border-color: rgba(59, 130, 246, 0.6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25), 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.tapbar-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: linear-gradient(135deg, #fde68a, #f59e0b);
+  color: #78350f;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tapbar-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tapbar-profile-info strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.tapbar-profile-info span {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+
+.tapbar-progress {
+  background: #fff5ea;
+  border-radius: 16px;
+  padding: 8px 14px;
+  border: 1px solid rgba(249, 115, 22, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.04);
+}
+
+.tapbar-progress-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.tapbar-level-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #b45309;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.tapbar-level-pill--next {
+  background: rgba(16, 185, 129, 0.15);
+  color: #047857;
+}
+
+.tapbar-progress-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #fde68a;
+  position: relative;
+  overflow: visible;
+  outline: none;
+}
+
+.tapbar-progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f97316, #facc15);
+  transition: width 0.4s ease;
+}
+
+.tapbar-progress-dot {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #f97316;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.32);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tapbar-progress-track:hover,
+.tapbar-progress-track:focus-visible {
+  background: #fdecc5;
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
+}
+
+.tapbar-progress-track:hover .tapbar-progress-dot,
+.tapbar-progress-track:focus-visible .tapbar-progress-dot {
+  box-shadow: 0 10px 28px rgba(249, 115, 22, 0.45);
+  transform: translate(-50%, -50%) scale(1.05);
+}
+
+.tapbar-progress-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  max-width: 240px;
+  text-align: center;
+}
+
+.tapbar-progress-track:hover .tapbar-progress-tooltip,
+.tapbar-progress-track:focus-visible .tapbar-progress-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.tapbar-progress-tooltip-content {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+  border-radius: 12px;
+  padding: 6px 14px;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  text-align: center;
+  white-space: normal;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+}
+
+.tapbar-progress-tooltip-arrow {
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 7px solid rgba(255, 255, 255, 0.95);
+  filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.15));
 }
 
 /* poignée horizontale sous la topbar */
 .topbar-resizer {
   height: 6px;
   cursor: row-resize;
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(15, 23, 42, 0.05);
   transition: background 0.15s ease;
 }
 
 .topbar-resizer:hover,
 .topbar-resizer.is-resizing {
-  background: rgba(0, 0, 0, 0.18);
+  background: rgba(15, 23, 42, 0.18);
 }
 
 /* XP Banner collée sous la topbar */
@@ -1501,12 +1809,35 @@ body {
   
   /* Topbar mobile compacte */
   .topbar {
-    padding: 0 16px !important;
+    padding: 16px !important;
   }
-  
-  .topbar-content {
-    font-size: 14px;
-    justify-content: flex-end; /* Bouton login à droite */
+
+  .tapbar-main {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tapbar-stats,
+  .tapbar-profile {
+    width: 100%;
+  }
+
+  .tapbar-profile {
+    justify-content: space-between;
+  }
+
+  .tapbar-profile-info {
+    flex: 1;
+  }
+
+  .tapbar-progress-bar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .tapbar-progress-bar .tapbar-level-pill,
+  .tapbar-progress-bar .tapbar-level-pill--next {
+    justify-content: center;
   }
   
   /* Empêcher tout débordement horizontal */

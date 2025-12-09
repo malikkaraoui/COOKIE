@@ -2,7 +2,7 @@
 // ⚠️ Ces clés sont PUBLIQUES (exposées côté client de toute façon)
 // La sécurité vient des règles Firebase Realtime Database
 import { initializeApp } from 'firebase/app'
-import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth'
+import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth'
 import { getDatabase } from 'firebase/database'
 import { getFunctions } from 'firebase/functions' 
 
@@ -26,7 +26,6 @@ export const auth = getAuth(app)
 setPersistence(auth, browserLocalPersistence).catch(() => {/* ignore */})
 
 export const db = getDatabase(app) // Realtime Database (plus simple que Firestore)
-export const googleProvider = new GoogleAuthProvider()
 
 // 👇 NOUVEAU : Cloud Functions (pour Stripe)
 export const functions = getFunctions(app)
