@@ -2,23 +2,43 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const FUNCTIONS_PROXY_PATH = process.env.VITE_FUNCTIONS_PROXY_PATH || ''
+const FUNCTIONS_PROXY_TARGET =
+  process.env.VITE_FUNCTIONS_PROXY_TARGET ||
+  process.env.VITE_FUNCTIONS_BASE_URL ||
+  'https://us-central1-cookie1-b3592.cloudfunctions.net'
+
+const buildProxyConfig = () => {
+  if (!FUNCTIONS_PROXY_PATH) {
+    return undefined
+  }
+  return {
+    [FUNCTIONS_PROXY_PATH]: {
+      target: FUNCTIONS_PROXY_TARGET,
+      changeOrigin: true,
+      secure: FUNCTIONS_PROXY_TARGET.startsWith('https://'),
+      rewrite: (path) => path.replace(FUNCTIONS_PROXY_PATH, ''),
+    }
+  }
+}
+
+const proxyConfig = buildProxyConfig()
+
+const baseServerConfig = {
+  headers: {
+    'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
+    'Cross-Origin-Embedder-Policy': 'unsafe-none'
+  },
+  ...(proxyConfig ? { proxy: proxyConfig } : {})
+}
+
 export default defineConfig({
   plugins: [
     react(),
-    tailwindcss(),
+    tailwindcss()
   ],
-  server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-      'Cross-Origin-Embedder-Policy': 'unsafe-none',
-    },
-  },
-  preview: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin-allow-popups',
-      'Cross-Origin-Embedder-Policy': 'unsafe-none',
-    },
-  },
+  server: baseServerConfig,
+  preview: baseServerConfig,
   build: {
     chunkSizeWarningLimit: 800,
     rollupOptions: {

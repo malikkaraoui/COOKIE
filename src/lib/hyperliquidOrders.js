@@ -25,6 +25,10 @@ export function getFunctionsBaseUrl() {
       DEFAULT_EMULATOR_URL
     )
   }
+  const proxyPath = resolveEnv('VITE_FUNCTIONS_PROXY_PATH')
+  if (proxyPath && typeof proxyPath === 'string' && proxyPath.trim().length > 0) {
+    return proxyPath.trim()
+  }
   return resolveEnv('VITE_FUNCTIONS_BASE_URL') || DEFAULT_FUNCTIONS_BASE_URL
 }
 
@@ -166,7 +170,7 @@ export async function placeHyperliquidTestOrder(payload) {
     throw new Error(
       `Impossible de contacter placeTestOrder (${PLACE_TEST_ORDER_ENDPOINT}). ` +
         'Assure-toi que le Functions Emulator tourne (npm run serve dans functions/) ' +
-        'ou configure VITE_FUNCTIONS_BASE_URL / VITE_USE_FUNCTIONS_EMULATOR selon le besoin. ' +
+        'ou configure VITE_FUNCTIONS_BASE_URL / VITE_FUNCTIONS_PROXY_PATH / VITE_USE_FUNCTIONS_EMULATOR selon le besoin. ' +
         `Détails: ${networkError.message}`
     )
   }

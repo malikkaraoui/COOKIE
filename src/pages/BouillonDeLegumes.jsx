@@ -7,6 +7,7 @@ import { getFundingMarketsSnapshot } from '../services/hyperliquidFunding'
 import { openFundingTrade, FUNDING_POSITIVE_THRESHOLD, FUNDING_NEGATIVE_THRESHOLD } from '../strategies/openFundingTrade'
 import { listFundingTrades } from '../lib/trading/fundingTradeStore'
 import { getHyperliquidTokenSymbols } from '../config/tokenList'
+import { useHyperliquidAccount } from '../hooks/useHyperliquidAccount'
 
 const SUPPORTED_COINS = getHyperliquidTokenSymbols()
 const CAPITAL_MIN = 100
@@ -20,6 +21,7 @@ const DEFAULT_LEVERAGE = 1
 export default function BouillonDeLegumes() {
   const { user, signInWithGoogle } = useAuth()
   const { profile, loading: profileLoading } = useUserProfile()
+  const hyperliquidAccount = useHyperliquidAccount({ pollIntervalMs: 25000 })
   const [capitalUsd, setCapitalUsd] = useState(500)
   const [minFundingThreshold, setMinFundingThreshold] = useState(FUNDING_POSITIVE_THRESHOLD)
   const [status, setStatus] = useState(null)
@@ -39,6 +41,68 @@ export default function BouillonDeLegumes() {
       return aRate - bRate
     })
   }, [marketSnapshot])
+
+  const {
+    status: hyperliquidStatus,
+    perp: hyperliquidPerp,
+    totals: hyperliquidTotals,
+    refetch: refetchHyperliquidAccount
+  } = hyperliquidAccount
+
+  const hyperliquidPerpAvailableUsd = useMemo(() => {
+    const candidates = [
+      hyperliquidPerp?.withdrawable,
+      hyperliquidTotals?.availableUsd,
+      hyperliquidTotals?.globalUsd
+    ]
+    for (const raw of candidates) {
+      const numeric = typeof raw === 'string' ? Number(raw) : raw
+      if (Number.isFinite(numeric) && numeric >= 0) {
+        return numeric
+      }
+    }
+    return null
+  }, [hyperliquidPerp?.withdrawable, hyperliquidTotals?.availableUsd, hyperliquidTotals?.globalUsd])
+
+  const capitalSliderMax = useMemo(() => {
+    if (Number.isFinite(hyperliquidPerpAvailableUsd)) {
+      return Math.max(0, hyperliquidPerpAvailableUsd)
+    }
+    return CAPITAL_MAX
+  }, [hyperliquidPerpAvailableUsd])
+
+  const capitalSliderMin = useMemo(() => {
+    if (capitalSliderMax <= 0) {
+      return 0
+    }
+    return Math.min(CAPITAL_MIN, capitalSliderMax)
+  }, [capitalSliderMax])
+
+  const capitalSliderStep = useMemo(() => {
+    if (capitalSliderMax <= 500) {
+      return Math.max(5, CAPITAL_STEP / 5)
+    }
+    if (capitalSliderMax <= 2000) {
+      return Math.max(10, CAPITAL_STEP / 2)
+    }
+    return CAPITAL_STEP
+  }, [capitalSliderMax])
+
+  useEffect(() => {
+    if (capitalSliderMax <= 0) {
+      setCapitalUsd(0)
+      return
+    }
+    setCapitalUsd((prev) => {
+      if (prev < capitalSliderMin) {
+        return capitalSliderMin
+      }
+      if (prev > capitalSliderMax) {
+        return capitalSliderMax
+      }
+      return prev
+    })
+  }, [capitalSliderMax, capitalSliderMin])
 
   const isPremium = useMemo(() => {
     const membership = profile?.membership
@@ -90,7 +154,8 @@ export default function BouillonDeLegumes() {
       return
     }
     setStatus(null)
-    setCapitalUsd(Math.max(CAPITAL_MIN, Math.min(CAPITAL_MAX, numeric)))
+    const clamped = Math.max(capitalSliderMin, Math.min(capitalSliderMax, numeric))
+    setCapitalUsd(clamped)
   }
 
   const handleThresholdChange = (value) => {
@@ -109,6 +174,14 @@ export default function BouillonDeLegumes() {
     }
     if (!isPremium) {
       setStatus({ type: 'error', message: 'Bouillon Funding est réservé aux membres COOKIE Premium.' })
+      return
+    }
+
+    if (Number.isFinite(hyperliquidPerpAvailableUsd) && capitalUsd > hyperliquidPerpAvailableUsd) {
+      setStatus({
+        type: 'error',
+        message: `Montant sélectionné (${capitalUsd.toLocaleString('fr-FR')} $) > disponible sur Hyperliquid (${hyperliquidPerpAvailableUsd.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} $). Réduis la jauge ou rafraîchis ton solde.`,
+      })
       return
     }
 
@@ -284,12 +357,53 @@ export default function BouillonDeLegumes() {
             <div className="bouillon-amount-value">{capitalUsd.toLocaleString('fr-FR')} $</div>
             <input
               type="range"
-              min={CAPITAL_MIN}
-              max={CAPITAL_MAX}
-              step={CAPITAL_STEP}
-              value={capitalUsd}
+              min={capitalSliderMin}
+              max={capitalSliderMax}
+              step={capitalSliderStep}
+              value={capitalSliderMax > 0 ? capitalUsd : 0}
+              disabled={capitalSliderMax <= 0}
               onChange={(e) => handleCapitalChange(e.target.value)}
             />
+            <small
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: '8px',
+                color: '#b0b8d0'
+              }}
+            >
+              {Number.isFinite(hyperliquidPerpAvailableUsd) ? (
+                <>
+                  Disponible sur Hyperliquid (perp) :{' '}
+                  <strong>{Math.max(0, hyperliquidPerpAvailableUsd).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} $</strong>
+                  {hyperliquidStatus === 'loading' && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      <Loader2 className="bouillon-spinner" size={14} />
+                      sync…
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'inherit',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => refetchHyperliquidAccount?.()}
+                    aria-label="Rafraîchir le solde Hyperliquid"
+                  >
+                    <RefreshCw size={14} />
+                  </button>
+                </>
+              ) : (
+                'Connecte ton wallet Hyperliquid sur “Ma cuisine” pour synchroniser le solde disponible.'
+              )}
+            </small>
           </label>
           <label className="bouillon-control">
             <span>Seuil funding minimum</span>
