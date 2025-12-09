@@ -1,4 +1,4 @@
-import * as functions from "firebase-functions";
+import { onRequest } from "firebase-functions/v2/https";
 import { exchangeClient, infoClient } from "../hyperliquidClient";
 
 type AllowedTif = "Gtc" | "Ioc" | "Alo" | "FrontendMarket" | "LiquidationMarket";
@@ -170,86 +170,89 @@ async function updateLeverageIfRequested(
   });
 }
 
-export const placeTestOrder = functions.https.onRequest(async (req, res) => {
-  try {
-    res.set("Access-Control-Allow-Origin", "*");
-    res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.set("Access-Control-Allow-Headers", "Content-Type");
-    if (req.method === "OPTIONS") {
-      res.status(204).send("");
-      return;
-    }
-
-    if (req.method !== "POST") {
-      res.status(405).send("Method not allowed");
-      return;
-    }
-
-    const rawBody = req.body as PlaceOrderRequestBody;
-    const ordersPayload = normalizeIncomingOrders(rawBody);
-    const leverageConfig = normalizeLeverageConfig(rawBody.leverageConfig);
-
-    if (!ordersPayload.length) {
-      res.status(400).json({
-        error: "Aucun ordre détecté. Fournis 'orders' ou les champs d'un ordre unique.",
-      });
-      return;
-    }
-
-    if (ordersPayload.length > 10) {
-      res.status(400).json({
-        error: "Maximum 10 ordres simultanés pour des raisons de sécurité",
-      });
-      return;
-    }
-
-    const needsSymbolResolution = ordersPayload.some((order) => order.asset == null)
-      || Boolean(leverageConfig && leverageConfig.symbol && leverageConfig.asset == null);
-    const coinMap = needsSymbolResolution ? await buildCoinToAssetMap() : null;
-
-    const exchangeOrders: ExchangeOrderPayload[] = ordersPayload.map((order, index) => {
-      const symbol = order.symbol?.toUpperCase().trim();
-      const assetId = order.asset ?? (symbol ? coinMap?.get(symbol) : undefined);
-
-      if (assetId === undefined) {
-        throw new Error(
-          `Ordre #${index + 1}: impossible de résoudre l'actif. Fournis 'asset' ou 'symbol'.`
-        );
+export const placeTestOrder = onRequest(
+  { memory: "512MiB", timeoutSeconds: 60 },
+  async (req, res) => {
+    try {
+      res.set("Access-Control-Allow-Origin", "*");
+      res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.set("Access-Control-Allow-Headers", "Content-Type");
+      if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
       }
 
-      const size = parsePositiveNumber(order.size, "size");
-      const price = parsePositiveNumber(order.price, "price");
-      const tif = normalizeTif(order.tif, index);
-      const isBuy = normalizeSide(order.side, index);
+      if (req.method !== "POST") {
+        res.status(405).send("Method not allowed");
+        return;
+      }
 
-      return {
-        a: assetId,
-        b: isBuy,
-        p: price.toString(),
-        s: size.toString(),
-        r: Boolean(order.reduceOnly),
-        t: { limit: { tif } },
-      };
-    });
+      const rawBody = req.body as PlaceOrderRequestBody;
+      const ordersPayload = normalizeIncomingOrders(rawBody);
+      const leverageConfig = normalizeLeverageConfig(rawBody.leverageConfig);
 
-    await updateLeverageIfRequested(leverageConfig, coinMap);
+      if (!ordersPayload.length) {
+        res.status(400).json({
+          error: "Aucun ordre détecté. Fournis 'orders' ou les champs d'un ordre unique.",
+        });
+        return;
+      }
 
-    const result = await exchangeClient.order({
-      orders: exchangeOrders,
-      grouping: "na",
-    });
+      if (ordersPayload.length > 10) {
+        res.status(400).json({
+          error: "Maximum 10 ordres simultanés pour des raisons de sécurité",
+        });
+        return;
+      }
 
-    res.status(200).json({
-      ok: true,
-      ordersSubmitted: exchangeOrders.length,
-      result,
-    });
-    return;
-  } catch (error: any) {
-    console.error(error);
-    const message =
-      typeof error?.message === "string" ? error.message : "Erreur interne Hyperliquid";
-    res.status(500).json({ error: message });
-    return;
+      const needsSymbolResolution = ordersPayload.some((order) => order.asset == null)
+        || Boolean(leverageConfig && leverageConfig.symbol && leverageConfig.asset == null);
+      const coinMap = needsSymbolResolution ? await buildCoinToAssetMap() : null;
+
+      const exchangeOrders: ExchangeOrderPayload[] = ordersPayload.map((order, index) => {
+        const symbol = order.symbol?.toUpperCase().trim();
+        const assetId = order.asset ?? (symbol ? coinMap?.get(symbol) : undefined);
+
+        if (assetId === undefined) {
+          throw new Error(
+            `Ordre #${index + 1}: impossible de résoudre l'actif. Fournis 'asset' ou 'symbol'.`
+          );
+        }
+
+        const size = parsePositiveNumber(order.size, "size");
+        const price = parsePositiveNumber(order.price, "price");
+        const tif = normalizeTif(order.tif, index);
+        const isBuy = normalizeSide(order.side, index);
+
+        return {
+          a: assetId,
+          b: isBuy,
+          p: price.toString(),
+          s: size.toString(),
+          r: Boolean(order.reduceOnly),
+          t: { limit: { tif } },
+        };
+      });
+
+      await updateLeverageIfRequested(leverageConfig, coinMap);
+
+      const result = await exchangeClient.order({
+        orders: exchangeOrders,
+        grouping: "na",
+      });
+
+      res.status(200).json({
+        ok: true,
+        ordersSubmitted: exchangeOrders.length,
+        result,
+      });
+      return;
+    } catch (error: any) {
+      console.error(error);
+      const message =
+        typeof error?.message === "string" ? error.message : "Erreur interne Hyperliquid";
+      res.status(500).json({ error: message });
+      return;
+    }
   }
-});
+);

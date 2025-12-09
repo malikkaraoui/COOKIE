@@ -1080,6 +1080,11 @@ body {
   font-size: 1rem;
 }
 
+.bouillon-token-go--short {
+  background: linear-gradient(135deg, #dc2626, #f97316);
+  box-shadow: 0 10px 24px rgba(220, 38, 38, 0.35);
+}
+
 .bouillon-token-go:disabled {
   opacity: 0.5;
   cursor: not-allowed;

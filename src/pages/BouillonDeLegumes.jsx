@@ -14,8 +14,7 @@ const CAPITAL_MIN = 100
 const CAPITAL_MAX = 20000
 const CAPITAL_STEP = 50
 const THRESHOLD_MIN = 0.00005
-const THRESHOLD_MAX = 0.005
-const THRESHOLD_STEP = 0.00005
+const FIXED_FUNDING_THRESHOLD = THRESHOLD_MIN
 const DEFAULT_LEVERAGE = 1
 
 export default function BouillonDeLegumes() {
@@ -23,7 +22,7 @@ export default function BouillonDeLegumes() {
   const { profile, loading: profileLoading } = useUserProfile()
   const hyperliquidAccount = useHyperliquidAccount({ pollIntervalMs: 25000 })
   const [capitalUsd, setCapitalUsd] = useState(500)
-  const [minFundingThreshold, setMinFundingThreshold] = useState(FUNDING_POSITIVE_THRESHOLD)
+  const minFundingThreshold = FIXED_FUNDING_THRESHOLD
   const [status, setStatus] = useState(null)
   const [submittingCoin, setSubmittingCoin] = useState(null)
   const [recentTrades, setRecentTrades] = useState(() => (typeof window === 'undefined' ? [] : listFundingTrades(5)))
@@ -158,15 +157,6 @@ export default function BouillonDeLegumes() {
     setCapitalUsd(clamped)
   }
 
-  const handleThresholdChange = (value) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) {
-      return
-    }
-    setStatus(null)
-    setMinFundingThreshold(Math.max(THRESHOLD_MIN, Math.min(THRESHOLD_MAX, numeric)))
-  }
-
   const handleOpenFunding = async (coin) => {
     if (!user) {
       setStatus({ type: 'error', message: 'Connecte-toi avant d’envoyer un GO.' })
@@ -264,7 +254,7 @@ export default function BouillonDeLegumes() {
     }
     return {
       label: `Funding < ${minFundingThresholdPct}%`,
-      plan: 'Patiente ou baisse ton seuil pour tester.',
+      plan: 'Patiente : le seuil COOKIE n’est pas atteint.',
       tone: 'flat',
     }
   }
@@ -315,7 +305,7 @@ export default function BouillonDeLegumes() {
               <p className="bouillon-token-plan">{descriptor.plan}</p>
               <button
                 type="button"
-                className="bouillon-token-go"
+                className={`bouillon-token-go ${descriptor.tone === 'short' ? 'bouillon-token-go--short' : ''}`}
                 onClick={() => handleOpenFunding(market.coin)}
                 disabled={disabled}
               >
@@ -408,16 +398,8 @@ export default function BouillonDeLegumes() {
           <label className="bouillon-control">
             <span>Seuil funding minimum</span>
             <div className="bouillon-amount-value">{minFundingThresholdPct} %</div>
-            <input
-              type="range"
-              min={THRESHOLD_MIN}
-              max={THRESHOLD_MAX}
-              step={THRESHOLD_STEP}
-              value={minFundingThreshold}
-              onChange={(e) => handleThresholdChange(e.target.value)}
-            />
             <small>
-              En dessous de ce seuil, le bouton GO reste grisé. Le watcher COOKIE n’ouvre jamais de trade : il surveille seulement tes positions et les ferme si le funding repasse sous cette barre.
+              Seuil verrouillé sur la valeur minimale autorisée par COOKIE. En dessous, le bouton GO reste grisé. Le watcher n’ouvre jamais de trade : il surveille seulement tes positions et les ferme si le funding repasse sous cette barre.
             </small>
           </label>
         </div>
