@@ -154,8 +154,8 @@ export default function FundingMultiChart({
       )}
 
       {hasData ? (
-        <div style={{ width: '100%', height: 240 }}>
-          <ResponsiveContainer>
+        <div style={{ width: '100%', minHeight: 260 }}>
+          <ResponsiveContainer width="100%" height={240} minHeight={200} minWidth={200}>
             <LineChart data={enhancedChartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.08} />
               <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 12 }} />

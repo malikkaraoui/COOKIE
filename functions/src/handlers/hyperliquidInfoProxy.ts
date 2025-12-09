@@ -1,4 +1,6 @@
-import * as functions from "firebase-functions";
+import { onRequest } from "firebase-functions/v2/https";
+import { logger } from "firebase-functions/logger";
+import type { Request, Response } from "express";
 
 const INFO_URL = process.env.HL_INFO_URL ?? "https://api.hyperliquid-testnet.xyz/info";
 
@@ -23,7 +25,7 @@ async function forwardInfoRequest(body: JsonRecord): Promise<unknown> {
   return response.json();
 }
 
-const hyperliquidInfoProxyHandler = async (req: functions.Request, res: functions.Response) => {
+const hyperliquidInfoProxyHandler = async (req: Request, res: Response) => {
   res.set("Access-Control-Allow-Origin", "*");
   res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.set("Access-Control-Allow-Headers", "Content-Type");
@@ -53,7 +55,7 @@ const hyperliquidInfoProxyHandler = async (req: functions.Request, res: function
     const payload = await forwardInfoRequest(req.body);
     res.status(200).json(payload);
   } catch (error: any) {
-    functions.logger.error("hyperliquidInfoProxy failure", {
+    logger.error("hyperliquidInfoProxy failure", {
       message: error?.message,
       stack: error?.stack,
     });
@@ -61,11 +63,12 @@ const hyperliquidInfoProxyHandler = async (req: functions.Request, res: function
   }
 };
 
-export const hyperliquidInfoProxy = functions
-  .region("us-central1")
-  .runWith({
-    memory: "512MiB",
+export const hyperliquidInfoProxy = onRequest(
+  {
+    region: "us-central1",
+    memory: "1GiB",
     timeoutSeconds: 30,
     maxInstances: 10,
-  })
-  .https.onRequest(hyperliquidInfoProxyHandler);
+  },
+  hyperliquidInfoProxyHandler,
+);

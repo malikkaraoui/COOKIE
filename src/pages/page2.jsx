@@ -469,14 +469,40 @@ export default function Page2() {
     }
   }, [hlSpot, hlPerp, hlTotals])
 
+  const hyperliquidWalletAvailableUsd = useMemo(() => {
+    const candidates = [
+      hlSpot?.availableUsd,
+      hlTotals?.availableUsd,
+      hlPerp?.withdrawable
+    ]
+    for (const raw of candidates) {
+      const numeric = typeof raw === 'string' ? Number(raw) : raw
+      if (Number.isFinite(numeric) && numeric >= 0) {
+        return numeric
+      }
+    }
+    return null
+  }, [hlSpot?.availableUsd, hlTotals?.availableUsd, hlPerp?.withdrawable])
+
+
+
+  const hyperliquidSelectedEntries = useMemo(() => {
+    return selectedTokens.filter((entry) => {
+      if (!entry) {
+        return false
+      }
+      return !entry.toLowerCase().includes(':binance')
+    })
+  }, [selectedTokens])
+
   const selectedSymbols = useMemo(() => {
-    return selectedTokens.map(symbolWithSource => {
+    return hyperliquidSelectedEntries.map(symbolWithSource => {
       const [symbol] = symbolWithSource.includes(':') 
         ? symbolWithSource.split(':') 
         : [symbolWithSource]
       return symbol
     })
-  }, [selectedTokens])
+  }, [hyperliquidSelectedEntries])
 
   const orderableSymbols = selectedSymbols
   const hasOrderableTokens = orderableSymbols.length > 0
@@ -721,7 +747,6 @@ export default function Page2() {
   
   // Simulateur de portfolio avec les tokens dynamiques
   const {
-    capitalInitial,
     setCapitalInitial,
     weights,
     setWeight,
@@ -740,8 +765,6 @@ export default function Page2() {
     return map
   }, [fundingDisplayPairs, weights])
 
-  const capitalDebounceRef = useRef(null)
-  const isEditingCapitalRef = useRef(false)
   const lastSyncedCapitalRef = useRef(null)
   const priceNudgeIntervalRef = useRef(null)
   const binancePriceNudgeIntervalRef = useRef(null)
@@ -771,7 +794,7 @@ export default function Page2() {
     bootstrapCapital()
 
     unsubscribe = subscribeInitialCapital(user.uid, (value) => {
-      if (!isMounted || isEditingCapitalRef.current) return
+      if (!isMounted) return
       if (value == null) return
       const numericValue = typeof value === 'number' ? value : Number(value)
       if (!Number.isFinite(numericValue)) return
@@ -788,9 +811,6 @@ export default function Page2() {
 
   useEffect(() => {
     return () => {
-      if (capitalDebounceRef.current) {
-        clearTimeout(capitalDebounceRef.current)
-      }
       if (priceNudgeIntervalRef.current) {
         clearInterval(priceNudgeIntervalRef.current)
         priceNudgeIntervalRef.current = null
@@ -802,16 +822,31 @@ export default function Page2() {
     }
   }, [])
 
-
-  const persistCapital = async (value) => {
-    if (!user?.uid) return
-    try {
-      await saveInitialCapital(user.uid, value)
-      lastSyncedCapitalRef.current = value
-    } catch (error) {
-      console.error('Erreur sauvegarde capital initial:', error)
+  useEffect(() => {
+    if (!Number.isFinite(hyperliquidWalletAvailableUsd)) {
+      return
     }
-  }
+    const normalized = Math.max(0, Math.round(hyperliquidWalletAvailableUsd * 100) / 100)
+    setCapitalInitial((prev) => {
+      if (Math.abs((prev ?? 0) - normalized) < 0.01) {
+        return prev
+      }
+      return normalized
+    })
+
+    if (!user?.uid) {
+      return
+    }
+
+    if (lastSyncedCapitalRef.current === normalized) {
+      return
+    }
+
+    lastSyncedCapitalRef.current = normalized
+    saveInitialCapital(user.uid, normalized).catch((error) => {
+      console.error('Erreur synchro capital Hyperliquid:', error)
+    })
+  }, [hyperliquidWalletAvailableUsd, user?.uid, setCapitalInitial])
 
   const updateOrderField = (index, field, value) => {
     setOrderForms((prev) =>
@@ -1332,24 +1367,6 @@ export default function Page2() {
     )
   }, [findBinanceSymbol, computeAutoLimitPrice])
 
-  const handleCapitalChange = (newValue) => {
-    setCapitalInitial(newValue)
-
-    if (!user?.uid) {
-      return
-    }
-
-    isEditingCapitalRef.current = true
-
-    if (capitalDebounceRef.current) {
-      clearTimeout(capitalDebounceRef.current)
-    }
-
-    capitalDebounceRef.current = setTimeout(() => {
-      isEditingCapitalRef.current = false
-      persistCapital(newValue)
-    }, 600)
-  }
 
   const extractOrderIdFromStatus = (status, index) => {
     void index
@@ -1490,6 +1507,32 @@ export default function Page2() {
       setOrderStatus({
         state: 'error',
         message: 'Ajoute au moins un ordre valide (token, taille, prix)',
+        payload: null
+      })
+      return
+    }
+
+    const totalNotionalUsd = sanitizedOrders.reduce((sum, order) => {
+      const size = Number(order.size)
+      const price = Number(order.price)
+      if (!Number.isFinite(size) || !Number.isFinite(price)) {
+        return sum
+      }
+      return sum + size * price
+    }, 0)
+    const availableUsd = Number(hyperliquidWalletAvailableUsd)
+    if (Number.isFinite(availableUsd) && totalNotionalUsd > availableUsd + 0.01) {
+      const formattedTotal = `${formatNumericString(totalNotionalUsd, {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      const formattedAvailable = `${formatNumericString(availableUsd, {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      setOrderStatus({
+        state: 'error',
+        message: `Montant cumulé (${formattedTotal}) supérieur au disponible Hyperliquid (${formattedAvailable}). Réduis la taille ou attends de libérer du capital.`,
         payload: null
       })
       return
@@ -4055,55 +4098,6 @@ export default function Page2() {
             )}
           </div>
         )}
-      </div>
-
-      {/* Capital Initial Slider */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        borderRadius: '16px',
-        padding: '24px',
-        marginBottom: '24px',
-        border: '1px solid #334155'
-      }}>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          marginBottom: '16px'
-        }}>
-          <label style={{ color: '#e5e7eb', fontSize: '16px', fontWeight: '600' }}>
-            💰 Capital Initial
-          </label>
-          <span style={{ color: '#3b82f6', fontSize: '24px', fontWeight: 'bold' }}>
-            ${capitalInitial.toFixed(0)}
-          </span>
-        </div>
-        <input
-          type="range"
-          min="10"
-          max="10000"
-          step="10"
-          value={capitalInitial}
-          onChange={(e) => handleCapitalChange(parseFloat(e.target.value))}
-          style={{
-            width: '100%',
-            height: '10px',
-            borderRadius: '5px',
-            background: `linear-gradient(to right, #3b82f6 0%, #3b82f6 ${((capitalInitial - 10) / 9990) * 100}%, #334155 ${((capitalInitial - 10) / 9990) * 100}%, #334155 100%)`,
-            outline: 'none',
-            cursor: 'pointer'
-          }}
-        />
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'space-between',
-          marginTop: '8px',
-          color: '#64748b',
-          fontSize: '12px'
-        }}>
-          <span>$10</span>
-          <span>$10,000</span>
-        </div>
       </div>
 
       {/* Résultats */}

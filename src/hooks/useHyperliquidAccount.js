@@ -26,20 +26,40 @@ const SAFE_NUMBER = (value) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
-async function postInfo(body, signal) {
-  const response = await fetch(INFO_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-    signal
-  })
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504])
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(text || `Hyperliquid info error ${response.status}`)
+async function postInfo(body, signal, { attempts = 3, baseDelayMs = 350 } = {}) {
+  let lastError
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(INFO_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal
+      })
+
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        const message = text || `Hyperliquid info error ${response.status}`
+        if (!RETRYABLE_STATUS.has(response.status) || attempt === attempts - 1) {
+          throw new Error(message)
+        }
+        lastError = new Error(message)
+      } else {
+        return response.json()
+      }
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw error
+      }
+      lastError = error
+    }
+
+    const delay = baseDelayMs * (attempt + 1)
+    await new Promise((resolve) => setTimeout(resolve, delay))
   }
-
-  return response.json()
+  throw lastError || new Error('Hyperliquid info error')
 }
 
 function parsePerpAccount(raw) {

@@ -5,7 +5,7 @@
  */
 
 import TokenTile from '../elements/TokenTile'
-import { TOKENS } from '../config/tokenList'
+import { TOKENS, normalizeHyperliquidSymbol } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 
@@ -68,14 +68,16 @@ export default function Page1() {
 
       <div style={gridStyles.list}>
         {allTokens.map((token, idx) => {
-          const normalizedSymbol = token.symbol.toUpperCase()
           const normalizedSource = (token.source || 'hyperliquid').toLowerCase()
-          const selectionKey = `${normalizedSymbol}:${normalizedSource}`
+          const canonicalSymbol = normalizedSource === 'hyperliquid'
+            ? normalizeHyperliquidSymbol(token.symbol)
+            : (token.symbol || '').trim().toUpperCase()
+          const selectionKey = `${canonicalSymbol}:${normalizedSource}`
           const isSelected = selectionSet.has(selectionKey)
           return (
             <TokenTile 
               key={`${token.symbol}:${token.source}:${idx}`}
-              symbol={normalizedSymbol} 
+              symbol={canonicalSymbol} 
               source={normalizedSource}
               draggable 
               onAddToken={addToken}
