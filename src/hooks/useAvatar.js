@@ -5,6 +5,7 @@ import { useUserProfile } from './useUserProfile'
 import { useAuth } from './useAuth'
 
 const AVATAR_CACHE_PREFIX = 'avatar-cache-'
+const AVATAR_FONT_FAMILY = 'Space Grotesk, Arial, sans-serif'
 
 const getCacheKey = (uid) => `${AVATAR_CACHE_PREFIX}${uid}`
 
@@ -55,7 +56,7 @@ export function useAvatar() {
     const initial = firstName.charAt(0).toUpperCase()
     const fontSize = Math.floor(size * 0.4)
     
-    return `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"%3E%3Ccircle cx="${size/2}" cy="${size/2}" r="${size/2}" fill="%23666"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="white" font-size="${fontSize}" font-family="Arial"%3E${initial}%3C/text%3E%3C/svg%3E`
+    return `data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}"%3E%3Ccircle cx="${size/2}" cy="${size/2}" r="${size/2}" fill="%23666"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="white" font-size="${fontSize}" font-family="${AVATAR_FONT_FAMILY}"%3E${initial}%3C/text%3E%3C/svg%3E`
   }, [firstName])
 
   const updateInlineAvatar = useCallback((value) => {

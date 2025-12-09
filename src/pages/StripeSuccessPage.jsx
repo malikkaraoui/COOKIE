@@ -1,17 +1,35 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { CheckCircle, Clock, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { db } from '../config/firebase'
 import { ref, onValue } from 'firebase/database'
+import './StripeSuccessPage.css'
 
 export default function StripeSuccessPage() {
   const { user } = useAuth()
   const [membership, setMembership] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [expired, setExpired] = useState(false)
+  const navigate = useNavigate()
+  const timeoutRef = useRef(null)
+  const [blocked, setBlocked] = useState(false)
+
+  useEffect(() => {
+    if (localStorage.getItem('cookieStripeSuccessExpired') === 'true') {
+      setBlocked(true)
+      navigate('/ma-cuisine', { replace: true })
+    }
+  }, [navigate])
 
   useEffect(() => {
     if (!user) return
 
     // Écouter la confirmation WEBHOOK depuis Firebase RTDB
+    if (expired) {
+      return
+    }
+
     const membershipRef = ref(db, `users/${user.uid}/membership`)
     
     console.log('🔍 Attente confirmation webhook Stripe...')
@@ -29,47 +47,83 @@ export default function StripeSuccessPage() {
     })
 
     return () => unsubscribe()
-  }, [user])
+    return () => {
+      unsubscribe()
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [user, expired])
+
+  useEffect(() => {
+    if (membership && membership.active && membership.tier === 'premium') {
+      timeoutRef.current = setTimeout(() => {
+        setExpired(true)
+        localStorage.setItem('cookieStripeSuccessExpired', 'true')
+        navigate('/ma-cuisine', { replace: true })
+      }, 10000)
+    }
+  }, [membership, navigate])
+
+  if (expired) {
+    return null
+  }
+
+  if (blocked) {
+    return null
+  }
 
   if (!user) {
     return (
-      <div style={{ padding: '2rem' }}>
-        <p>Connexion requise...</p>
+      <div className="stripe-success-page">
+        <div className="stripe-success-warning">
+          <TriangleAlert size={20} />
+          <div>Connexion requise pour vérifier ton paiement.</div>
+          <small>Identifie-toi puis recharge la page pour voir l’état de ta commande.</small>
+        </div>
       </div>
     )
   }
 
   if (checking) {
     return (
-      <div style={{ padding: '2rem' }}>
-        <h1>Vérification du paiement...</h1>
-        <p>⏳ Attente de la confirmation webhook Stripe...</p>
-        <p style={{ fontSize: '0.9rem', color: '#6b7280', marginTop: '1rem' }}>
-          Cela peut prendre quelques secondes.
-        </p>
+      <div className="stripe-success-page">
+        <div className="stripe-success-loader">
+          <Clock size={20} />
+          <div>Vérification du paiement en cours…</div>
+          <small>Attente de la confirmation webhook Stripe. Cela peut prendre quelques secondes.</small>
+        </div>
       </div>
     )
   }
 
   if (!membership || !membership.active || membership.tier !== 'premium') {
     return (
-      <div style={{ padding: '2rem' }}>
-        <h1>⚠️ Paiement non confirmé</h1>
-        <p>Le webhook Stripe n'a pas encore validé ton paiement.</p>
-        <p style={{ fontSize: '0.9rem', color: '#6b7280', marginTop: '1rem' }}>
-          Si tu viens de payer, attends quelques secondes et rafraîchis la page.
-        </p>
+      <div className="stripe-success-page">
+        <div className="stripe-success-warning">
+          <TriangleAlert size={20} />
+          <div>Webhook Stripe non confirmé</div>
+          <small>
+            Si tu viens de finaliser le paiement, patiente quelques instants puis actualise. Contacte le support si le
+            problème persiste.
+          </small>
+        </div>
       </div>
     )
   }
 
   return (
-    <div style={{ padding: '2rem' }}>
-      <h1>✅ Paiement réussi !</h1>
-      <p>Merci pour ton achat de COOKIE Premium.</p>
-      <p style={{ marginTop: '0.5rem', color: '#16a34a' }}>
-        ✅ Ton compte premium a été activé via webhook Stripe.
-      </p>
+    <div className="stripe-success-page">
+      <article className="stripe-success-card">
+        <div className="stripe-success-icon">
+          <CheckCircle size={36} />
+        </div>
+        <h1>Paiement réussi !</h1>
+        <p>Merci pour ton achat de COOKIE Premium.</p>
+        <p className="stripe-success-status">
+          <ShieldCheck size={18} /> Ton compte premium a été activé via webhook Stripe.
+        </p>
+      </article>
     </div>
   )
 }

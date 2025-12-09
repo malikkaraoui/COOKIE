@@ -3,11 +3,10 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 8px;
 }
 
 .reown-logout-button {
-  color: #7c3aed;
+  color: #d97706;
   border: none;
   background: transparent;
   text-align: left;
@@ -21,16 +20,16 @@
 }
 
 .reown-logout-icon {
-  background: rgba(124, 58, 237, 0.18);
+  background: rgba(255, 153, 0, 0.18);
   color: currentColor;
 }
 
 .reown-logout-button:hover:not(:disabled) .reown-logout-icon {
-  background: rgba(124, 58, 237, 0.28);
+  background: rgba(255, 153, 0, 0.28);
 }
 
 .reown-logout-button:focus-visible {
-  outline: 2px solid rgba(124, 58, 237, 0.4);
+  outline: 2px solid rgba(255, 153, 0, 0.4);
   outline-offset: 2px;
 }
 

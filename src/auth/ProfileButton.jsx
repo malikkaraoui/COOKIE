@@ -19,7 +19,7 @@ export default function ProfileButton({ isCompact = false }) {
   return (
     <Link 
       to="/profile" 
-      className={`profile-button nav-link ${isActive ? 'active' : ''} ${isCompact ? 'nav-link--compact' : ''}`}
+      className={`auth-nav-button nav-link ${isActive ? 'active' : ''} ${isCompact ? 'nav-link--compact' : ''}`}
       {...hoverLabelProps}
     >
       <span className="nav-link-icon profile-icon">

@@ -28,7 +28,7 @@ export default function LogoutButton({ isCompact = false }) {
   return (
     <button 
       onClick={handleLogout} 
-      className={`logout-button nav-link ${isCompact ? 'nav-link--compact' : ''}`}
+      className={`auth-nav-button nav-link ${isCompact ? 'nav-link--compact' : ''}`}
       {...hoverLabelProps}
       type="button"
     >

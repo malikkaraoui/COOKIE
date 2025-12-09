@@ -8,6 +8,7 @@ import { useDropZone } from '../hooks/useDropZone'
 import { isActivePath } from '../lib/pathUtils'
 import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
+import LogoutButton from '../auth/LogoutButton'
 import { ReownLogoutButton } from './auth/ReownLogoutButton'
 import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
 
@@ -256,9 +257,9 @@ export default function Sidebar() {
                         right: '4px',
                         width: '8px',
                         height: '8px',
-                        background: '#22c55e',
+                        background: '#ffb347',
                         borderRadius: '50%',
-                        border: '2px solid #e7cfcf'
+                        border: '2px solid #fff3da'
                       }} />
                     )}
                   </Link>
@@ -269,8 +270,15 @@ export default function Sidebar() {
           
           {/* Footer fixe en bas avec les boutons auth */}
           <div className="sidebar-footer">
-            <ReownLogoutButton isCompact={isCompact} />
-            {user && <ProfileButton isCompact={isCompact} />}
+            <div className="sidebar-footer__stack">
+              {user && (
+                <>
+                  <ProfileButton isCompact={isCompact} />
+                  <LogoutButton isCompact={isCompact} />
+                </>
+              )}
+              <ReownLogoutButton isCompact={isCompact} />
+            </div>
           </div>
         </div>
       </nav>

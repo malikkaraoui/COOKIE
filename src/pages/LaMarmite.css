@@ -1,13 +1,7 @@
-:root {
-  --marmite-hero-bg: radial-gradient(circle at 20% 20%, rgba(255, 220, 176, 0.5), transparent 60%),
-    radial-gradient(circle at 80% 10%, rgba(202, 255, 230, 0.4), transparent 50%),
-    linear-gradient(180deg, #fffdf6 0%, #fff7ec 60%, #ffffff 100%);
-}
-
 .marmite-page {
   min-height: calc(100vh - var(--cookie-topbar-height, 0px));
   padding: 80px clamp(16px, 5vw, 72px) 120px;
-  background: var(--marmite-hero-bg);
+  background: transparent;
   display: flex;
   flex-direction: column;
   gap: 56px;

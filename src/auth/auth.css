@@ -1,23 +1,21 @@
 /* Styles du module d'authentification */
 
-.profile-button {
+.auth-nav-button {
   width: 100%;
   border: none;
-  background: transparent;
+  background: none;
   text-decoration: none;
-  padding: 0;
   text-align: left;
   cursor: pointer;
   font: inherit;
-  color: inherit;
 }
 
-.profile-button:focus-visible {
-  outline: 2px solid rgba(111, 90, 114, 0.35);
+.auth-nav-button:focus-visible {
+  outline: 2px solid rgba(255, 153, 0, 0.4);
   outline-offset: 2px;
 }
 
-.profile-button .nav-link-icon svg {
+.auth-nav-button .nav-link-icon svg {
   width: 18px;
   height: 18px;
 }
