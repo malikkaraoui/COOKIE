@@ -1,7 +1,30 @@
 // Service Realtime Database pour la gestion des utilisateurs
 // Architecture simple avec Firebase Auth UID comme clé unique
-import { ref, get, set, update } from 'firebase/database'
+import { ref, get, set, update, onValue } from 'firebase/database'
 import { db } from '../../config/firebase'
+
+export const CONTACT_INFO_POLICY = {
+  LEGACY: 'legacy',
+  MANDATORY_V1: 'mandatory-v1',
+}
+
+const WALLET_UID_PREFIX = 'wallet:'
+
+function isWalletUid(uid) {
+  return typeof uid === 'string' && uid.startsWith(WALLET_UID_PREFIX)
+}
+
+function extractWalletAddress(uid) {
+  if (!isWalletUid(uid)) return null
+  return uid.slice(WALLET_UID_PREFIX.length)
+}
+
+function hasBasicContactInfo(profileLike = {}) {
+  const firstName = typeof profileLike.firstName === 'string' ? profileLike.firstName.trim() : ''
+  const lastName = typeof profileLike.lastName === 'string' ? profileLike.lastName.trim() : ''
+  const email = typeof profileLike.email === 'string' ? profileLike.email.trim() : ''
+  return Boolean(firstName && lastName && email)
+}
 
 /**
  * Extrait le prénom depuis le displayName de Google
@@ -36,6 +59,10 @@ export async function createOrUpdateUserProfile(user) {
   }
 
   const userRef = ref(db, `users/${user.uid}`)
+  const isWalletUser = isWalletUid(user.uid)
+  const walletAddress = extractWalletAddress(user.uid)
+  const normalizedWalletAddress = walletAddress ? walletAddress.toLowerCase() : null
+  const providerId = isWalletUser ? 'wallet' : (user.providerData?.[0]?.providerId || 'google')
   
   try {
     // Vérifier si le profil existe déjà
@@ -43,14 +70,53 @@ export async function createOrUpdateUserProfile(user) {
     const now = Date.now()
     
     if (snapshot.exists()) {
-      // Mise à jour : lastLoginAt, photoURL ET nom/prénom (au cas où changés sur Google)
-      await update(userRef, {
+      const existingProfile = snapshot.val() || {}
+      const nextNames = {
         firstName: extractFirstName(user.displayName),
         lastName: extractLastName(user.displayName),
+      }
+
+      const updates = {
         photoURL: user.photoURL || null,
         lastLoginAt: now,
         updatedAt: now,
-      })
+        authProvider: providerId,
+      }
+
+      if (normalizedWalletAddress) {
+        updates.walletAddress = normalizedWalletAddress
+      }
+
+      if (nextNames.firstName) {
+        updates.firstName = nextNames.firstName
+      }
+
+      if (nextNames.lastName) {
+        updates.lastName = nextNames.lastName
+      }
+
+      const resolvedEmail = existingProfile.email || user.email || ''
+      const mergedContactInfo = {
+        ...existingProfile,
+        ...nextNames,
+        email: resolvedEmail,
+      }
+
+      const hasContactInfo = hasBasicContactInfo(mergedContactInfo)
+
+      if (!existingProfile.contactInfoPolicyVersion) {
+        updates.contactInfoPolicyVersion = CONTACT_INFO_POLICY.LEGACY
+
+        if (hasContactInfo) {
+          updates.contactInfoCompleted = true
+          updates.contactInfoAutoCompletedAt = now
+        }
+      } else if (hasContactInfo && existingProfile.contactInfoCompleted === false) {
+        updates.contactInfoCompleted = true
+        updates.contactInfoAutoCompletedAt = now
+      }
+
+      await update(userRef, updates)
     } else {
       // Création : nouveau profil avec toutes les données de base
       await set(userRef, {
@@ -59,11 +125,14 @@ export async function createOrUpdateUserProfile(user) {
         lastName: extractLastName(user.displayName),
         photoURL: user.photoURL || null,
         birthDate: null, // À renseigner par l'utilisateur
-        authProvider: 'google',
+        authProvider: providerId,
+        walletAddress: normalizedWalletAddress,
         createdAt: now,
         updatedAt: now,
         lastLoginAt: now,
         isActive: true,
+        contactInfoCompleted: false,
+        contactInfoPolicyVersion: CONTACT_INFO_POLICY.MANDATORY_V1,
       })
     }
   } catch (error) {
@@ -253,11 +322,29 @@ export async function getUserVote(uid, questionId) {
  */
 export async function savePortfolioWeights(uid, weights) {
   if (!uid) throw new Error('UID requis')
-  if (!weights || typeof weights !== 'object') throw new Error('weights doit être un objet')
-  
+
   const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
-  
-  await set(weightsRef, weights)
+
+  // Permettre la suppression totale des poids (null) sans faire planter l'appelant
+  if (weights == null) {
+    await set(weightsRef, null)
+    return
+  }
+
+  if (typeof weights !== 'object' || Array.isArray(weights)) {
+    throw new Error('weights doit être un objet')
+  }
+
+  const sanitized = Object.entries(weights).reduce((acc, [symbol, rawValue]) => {
+    const numericValue = Number(rawValue)
+    if (!Number.isFinite(numericValue)) {
+      return acc
+    }
+    acc[symbol] = numericValue
+    return acc
+  }, {})
+
+  await set(weightsRef, Object.keys(sanitized).length > 0 ? sanitized : null)
 }
 
 /**
@@ -273,4 +360,75 @@ export async function getPortfolioWeights(uid) {
   const snapshot = await get(weightsRef)
   
   return snapshot.exists() ? snapshot.val() : null
+}
+
+/**
+ * Récupère le capital initial du simulateur (« Ma Cuisine »)
+ * Valeur par défaut : 1000
+ *
+ * @param {string} uid
+ * @returns {Promise<number>} - Capital initial en dollars
+ */
+export async function getInitialCapital(uid) {
+  if (!uid) return 1000
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings/capitalInitial`)
+  const snapshot = await get(capitalRef)
+
+  if (snapshot.exists()) {
+    const value = snapshot.val()
+    const numericValue = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(numericValue) ? numericValue : 1000
+  }
+
+  return 1000
+}
+
+/**
+ * Sauvegarde le capital initial du simulateur
+ * Stocke également un timestamp pour debugging
+ *
+ * @param {string} uid
+ * @param {number} capital
+ */
+export async function saveInitialCapital(uid, capital) {
+  if (!uid) throw new Error('UID is required')
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings`)
+  const numericValue = Number(capital)
+
+  if (!Number.isFinite(numericValue)) {
+    throw new Error('capital must be a valid number')
+  }
+
+  await update(capitalRef, {
+    capitalInitial: numericValue,
+    capitalUpdatedAt: Date.now(),
+  })
+}
+
+/**
+ * Écoute en temps réel le capital initial depuis Firebase.
+ * Retourne une fonction pour se désabonner.
+ *
+ * @param {string} uid
+ * @param {(value: number|null) => void} callback
+ * @returns {() => void}
+ */
+export function subscribeInitialCapital(uid, callback) {
+  if (!uid) {
+    return () => {}
+  }
+
+  const capitalRef = ref(db, `users/${uid}/portfolioSettings/capitalInitial`)
+  const unsubscribe = onValue(capitalRef, (snapshot) => {
+    if (!callback) return
+    if (snapshot.exists()) {
+      callback(snapshot.val())
+    } else {
+      callback(null)
+    }
+  })
+
+  return () => unsubscribe()
 }

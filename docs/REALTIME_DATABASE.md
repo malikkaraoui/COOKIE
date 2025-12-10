@@ -17,7 +17,7 @@ Le projet utilise **Firebase Realtime Database** avec une architecture à trois 
 │   ├── ETH/
 │   ├── SOL/
 │   ├── BNB/              # BNB depuis Hyperliquid
-│   ├── MATIC/
+│   ├── POL/
 │   ├── kPEPE/
 │   ├── AVAX/
 │   ├── ATOM/

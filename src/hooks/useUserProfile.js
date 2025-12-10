@@ -2,9 +2,10 @@
 // Synchronise automatiquement le profil à la connexion et permet les mises à jour
 import { useState, useEffect } from 'react'
 import { useAuth } from './useAuth'
-import { 
-  getUserProfile, 
-  updateUserProfile 
+import {
+  getUserProfile,
+  updateUserProfile,
+  createOrUpdateUserProfile,
 } from '../lib/database/userService'
 
 export function useUserProfile() {
@@ -32,8 +33,15 @@ export function useUserProfile() {
         
         // OPTIMISATION : Récupérer uniquement le profil depuis la base
         // La création/mise à jour se fait automatiquement lors du login via AuthContext
-        const userProfile = await getUserProfile(user.uid)
-        
+        let userProfile = await getUserProfile(user.uid)
+
+        // Filet de sécurité : si le profil n'existe pas encore (latence auth → DB),
+        // on force une resynchronisation côté base puis on retente la lecture.
+        if (!userProfile) {
+          await createOrUpdateUserProfile(user)
+          userProfile = await getUserProfile(user.uid)
+        }
+
         if (isMounted) {
           setProfile(userProfile)
           setLoading(false)

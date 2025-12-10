@@ -1,13 +1,18 @@
 import { Link, useLocation } from 'react-router-dom'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, createElement } from 'react'
 import { useResizablePanel } from '../hooks/useResizablePanel'
 import { useNavigation } from '../context/NavigationContext'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useDropZone } from '../hooks/useDropZone'
+import { isActivePath } from '../lib/pathUtils'
+import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
-import LogoutButton from '../auth/LogoutButton'
-import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard } from 'lucide-react'
+import { ReownLogoutButton } from './auth/ReownLogoutButton'
+import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
+
+// Styles Sidebar COMPACT, ce réglage permet le redimensionnement
+const SIDEBAR_COMPACT_WIDTH = 170
 
 export default function Sidebar() {
   // État mobile menu
@@ -31,9 +36,9 @@ export default function Sidebar() {
 
   // gestion du redimensionnement horizontal (desktop seulement)
   const { size: width, isResizing, startResizing, handleDoubleClick } = useResizablePanel({
-    min: 110,
-    max: 420,
-    initial: 200,
+    min: 100,
+    max: 235,
+    initial: 210,
     axis: 'x', // on redimensionne sur l'axe horizontal
   })
 
@@ -46,20 +51,26 @@ export default function Sidebar() {
     const updateHeight = () => {
       const topbar = document.querySelector('.topbar')
       const resizer = document.querySelector('.topbar-resizer')
-      if (topbar && resizer) {
-        const topbarHeight = topbar.offsetHeight
-        const resizerHeight = resizer.offsetHeight
-        setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight}px)`)
-      }
+
+      const topbarHeight = topbar?.offsetHeight ?? 0
+      const resizerHeight = resizer?.offsetHeight ?? 0
+
+      setSidebarHeight(`calc(100vh - ${topbarHeight + resizerHeight}px)`)
     }
-    
-    // Observer les changements de taille de la topbar
-    const observer = new ResizeObserver(updateHeight)
-    const topbar = document.querySelector('.topbar')
-    if (topbar) observer.observe(topbar)
-    
+
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(updateHeight)
+      : null
+
+    const observed = [
+      document.querySelector('.topbar'),
+      document.querySelector('.topbar-resizer')
+    ].filter(Boolean)
+
+    observed.forEach((el) => observer?.observe(el))
     updateHeight()
-    return () => observer.disconnect()
+
+    return () => observer?.disconnect()
   }, [])
 
   // info de routing actuelle (/page1, /page2, /page3, etc.)
@@ -75,7 +86,7 @@ export default function Sidebar() {
   const { addToken, count } = useSelectedTokens()
   const [isShaking, setIsShaking] = useState(false)
   
-  const { dropHandlers, dropProps } = useDropZone(
+  const { dropHandlers, isActive: isDropZoneActive } = useDropZone(
     (symbol) => {
       // Vérifier si l'utilisateur est connecté
       if (!user) {
@@ -93,28 +104,37 @@ export default function Sidebar() {
 
   const links = [
     { 
-      to: '/ÉpicerieFine', 
+      to: '/epicerie-fine', 
       label: 'Épicerie fine',
       icon: ShoppingBasket
     },
     { 
-      to: '/MaCuisine', 
+      to: '/ma-cuisine', 
       label: 'Ma cuisine', 
       dropZone: true,
       icon: ChefHat
     },
     { 
-      to: '/LaMarmite', 
+      to: '/la-marmite', 
       label: 'La Marmite',
       icon: Soup
     },
+    {
+      to: '/bouillon-de-legumes',
+      label: 'Bouillon de légumes',
+      icon: Sprout
+    },
     // Lien Stripe visible uniquement pour les utilisateurs connectés
     ...(user ? [{
-      to: '/Stripe',
+      to: '/epicerie-premium',
       label: 'Acheter Premium',
       icon: CreditCard
     }] : []),
   ]
+
+  // Déterminer si on est en mode compact
+  const appliedWidth = isMobile ? 280 : width
+  const isCompact = appliedWidth <= SIDEBAR_COMPACT_WIDTH
 
   return (
     <>
@@ -173,7 +193,7 @@ export default function Sidebar() {
       )}
 
       <nav 
-        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''}`}
+        className={`sidebar ${isMobile ? 'mobile' : ''} ${isMobileMenuOpen ? 'open' : ''} ${isCompact ? 'sidebar--compact' : ''}`}
         style={{ 
           width: isMobile ? '280px' : width, 
           height: sidebarHeight,
@@ -187,61 +207,43 @@ export default function Sidebar() {
         <div className="sidebar-inner">
           {/* Zone scrollable des liens */}
           <div className="scrollable-links">
-            {links.map(({ to, label, dropZone, icon: Icon }) => {
-              const active = location.pathname === to
-              const isCompact = width < 160 // Mode compact si largeur < 160px
+            {links.map(({ to, label, dropZone, icon: IconComponent }) => {
+              const active = isActivePath(location.pathname, to)
+              const hoverLabelProps = getHoverLabelProps(label)
 
               return (
                 <div
                   key={to}
-                  style={{
-                    position: 'relative',
-                    padding: dropZone ? '8px' : '0',
-                    borderRadius: dropZone ? '8px' : '0',
-                    ...(dropZone ? dropProps : {})
-                  }}
+                  className={`nav-link-wrapper${dropZone ? ' nav-link-wrapper--dropzone' : ''}${dropZone && isDropZoneActive ? ' nav-link-wrapper--dropzone-active' : ''}`}
                   {...(dropZone ? dropHandlers : {})}
                 >
                   <Link
                     to={to}
-                    className={`nav-link ${active ? 'active' : ''}`}
+                    className={`nav-link ${active ? 'active' : ''} ${isCompact ? 'nav-link--compact' : ''}`}
                     style={{
-                      animation: isShaking && dropZone ? 'shake 0.5s infinite' : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '10px',
-                      justifyContent: isCompact ? 'center' : 'flex-start'
+                      animation: isShaking && dropZone ? 'shake 0.5s infinite' : 'none'
                     }}
+                    {...hoverLabelProps}
                     onClick={() => {
                       setActivePage(to)
                       closeMobileMenu()
                     }}
                   >
                     {/* Icône Lucide */}
-                    <Icon size={20} strokeWidth={2} />
+                    <span className="nav-link-icon">
+                      {createElement(IconComponent, { size: 20, strokeWidth: 2 })}
+                    </span>
                     
                     {/* Texte (masqué en mode compact) */}
                     {!isCompact && (
-                      <span style={{ 
-                        overflow: 'hidden', 
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                        flex: 1
-                      }}>
+                      <span className="nav-link-label">
                         {label}
                       </span>
                     )}
                     
                     {/* Badge count */}
                     {dropZone && count > 0 && !isCompact && (
-                      <span style={{
-                        padding: '2px 8px',
-                        background: '#22c55e',
-                        color: 'white',
-                        borderRadius: '12px',
-                        fontSize: '11px',
-                        fontWeight: 'bold'
-                      }}>
+                      <span className="nav-link-extra">
                         {count}/{4}
                       </span>
                     )}
@@ -254,9 +256,9 @@ export default function Sidebar() {
                         right: '4px',
                         width: '8px',
                         height: '8px',
-                        background: '#22c55e',
+                        background: '#ffb347',
                         borderRadius: '50%',
-                        border: '2px solid #e7cfcf'
+                        border: '2px solid #fff3da'
                       }} />
                     )}
                   </Link>
@@ -267,8 +269,14 @@ export default function Sidebar() {
           
           {/* Footer fixe en bas avec les boutons auth */}
           <div className="sidebar-footer">
-            <ProfileButton />
-            <LogoutButton />
+            <div className="sidebar-footer__stack">
+              {user && (
+                <>
+                  <ProfileButton isCompact={isCompact} />
+                </>
+              )}
+              <ReownLogoutButton isCompact={isCompact} />
+            </div>
           </div>
         </div>
       </nav>

@@ -1,0 +1,113 @@
+# Bonnes pratiques pour les clés privées & secrets  
+*(à utiliser dans COOKIE, Hyperliquid, Firebase, etc.)*
+
+---
+
+## 1. Objectif
+
+Ce document définit les **règles de sécurité minimales** pour gérer :
+
+- les **clés privées** (wallet, API Hyperliquid, etc.)
+- les **secrets d’infrastructure** (Firebase, DB, tokens d’API, etc.)
+- plus généralement tout ce qui **ne doit jamais se retrouver dans le front-end** (React/Vite).
+
+---
+
+## 2. Glossaire rapide
+
+- **Secret**  
+  Toute donnée qui permet de :
+  - signer des transactions,
+  - accéder à un compte,
+  - écrire dans une base de données,
+  - appeler une API en ton nom.  
+
+  > Exemples :  
+  > `HL_API_PRIVATE_KEY`, clé privée EVM, service account Firebase, mot de passe DB, token Stripe secret.
+
+- **Config publique**  
+  Données non sensibles, qui peuvent être connues du navigateur ou du dépôt Git.  
+
+  > Exemples :  
+  > URL d’API (`https://…cloudfunctions.net`), ID de projet Firebase, nom de réseau Hyperliquid testnet, etc.
+
+---
+
+## 3. Règles générales
+
+1. **Aucun secret dans le front-end**  
+   - Pas de clé privée dans du code React / Vite.
+   - Pas de secret dans `import.meta.env.VITE_…` si le secret est sensible.
+
+2. **Aucun secret dans Git**  
+   - Ne jamais committer un secret dans un repo (même privé).
+   - Toujours utiliser `.env` + `.gitignore` ou équivalent.
+
+3. **Un seul endroit qui “connaît” le secret : le back-end**  
+   - Firebase Functions, serveur Node, backend Next.js, etc.
+   - Le front discute uniquement avec le backend via des endpoints HTTP.
+
+4. **Les secrets sont injectés par l’environnement**  
+   - Local : fichiers `.env` non commités.  
+   - Production : “secrets” ou “config” du provider (Firebase, Vercel, etc.).
+
+---
+
+## 4. Ce qui ne doit JAMAIS se retrouver dans le front
+
+Liste non exhaustive :
+
+- Clés privées de wallets :
+  - clé EVM (MetaMask, API wallet Hyperliquid, etc.)
+  - clé privée Bitcoin / Solana / autres
+- Clés d’API sensibles :
+  - `HL_API_PRIVATE_KEY` (Hyperliquid)
+  - Secret Stripe (`STRIPE_SECRET_KEY`)
+  - Clé OpenAI / autres LLM
+- Identifiants de base de données :
+  - `DB_USER`, `DB_PASSWORD`
+  - URL DB type `postgres://user:pass@host:5432/db`
+- JSON de service account :
+  - `firebase-adminsdk-xxxx.json`
+- Clés de signature :
+  - clés qui signent des JWT
+  - clés utilisées pour chiffrer/déchiffrer des données
+- Tous les secrets d’admin :
+  - tokens pour dashboard admin
+  - clés d’accès aux consoles ou aux providers.
+
+Si tu dois te poser la question “est-ce que ceci est un secret ?”, pars du principe que **oui** tant que ce n’est pas clairement public.
+
+---
+
+## 5. Ce qui peut être en front (config publique)
+
+Peuvent être exposés :
+
+- URLs publiques :
+  - URL du backend : `VITE_API_BASE_URL=https://…cloudfunctions.net`
+  - URL d’API publiques (ex : endpoints REST ou websockets Hyperliquid / Binance *sans* clé)
+- IDs et noms :
+  - `VITE_FIREBASE_API_KEY` (côté client, elle est déjà considérée publique par Firebase)
+  - ID de projet, noms de réseau, IDs de market, etc.
+- Paramètres UI :
+  - couleurs, thèmes, noms de tokens affichés, etc.
+
+Règle simple :  
+> *Si quelqu’un a uniquement cette info, est-ce qu’il peut faire des dégâts significatifs ?*  
+> – Si oui → secret (backend).  
+> – Si non → config publique (front ok).
+
+---
+
+## 6. Où stocker les secrets
+
+### 6.1. En local (dev sur VS Code)
+
+- Créer un fichier `.env` ou `.env.local` **dans le dossier backend uniquement**, par exemple :
+
+  ```env
+  HL_ENV=testnet
+  HL_ACCOUNT_ADDRESS=0x...
+  HL_API_PRIVATE_KEY=0x...        # jamais montré ni commité
+  STRIPE_SECRET_KEY=sk_...

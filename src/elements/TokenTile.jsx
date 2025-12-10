@@ -26,7 +26,16 @@ function fmtSignedAbs(n, d = 0) {
   return `${s}${a.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d })}`
 }
 
-export default function TokenTile({ symbol, source = 'hyperliquid', draggable = false, onAddToken }) {
+export default function TokenTile({
+  symbol,
+  source = 'hyperliquid',
+  draggable = false,
+  onAddToken,
+  onRemoveToken,
+  isSelected = false,
+  selectionKey: externalSelectionKey,
+  disableAdd = false,
+}) {
   const [isMobile, setIsMobile] = useState(false)
   const [isAnimating, setIsAnimating] = useState(false)
   const [toast, setToast] = useState(null)
@@ -45,10 +54,11 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   const token = source === 'binance' ? tokenBinance : tokenHyper
   
   const { iconPath, handleError } = useTokenIcon(symbol)
-  const { isDragging, dragHandlers, dragProps } = useDraggable(draggable)
+  const { dragHandlers, dragProps } = useDraggable(draggable)
   
   const hasDelta = token.deltaAbs != null && token.deltaPct != null
   const color = !hasDelta ? '#94a3b8' : token.deltaAbs >= 0 ? '#22c55e' : '#ef4444'
+  const selectionKey = externalSelectionKey || `${symbol}:${source}`
 
   // Statut lisible
   let statusLabel = 'Chargement…'
@@ -57,91 +67,155 @@ export default function TokenTile({ symbol, source = 'hyperliquid', draggable = 
   else if (token.status === 'cached') statusLabel = 'Cache'
   else if (token.status === 'loading') statusLabel = 'Initialisation'
 
-  // Source lisible (affiche correctement l'origine des données)
-  // hyperliquid → Hyperliquid, binance → Binance, sinon Navigateur (cache/local)
+  // Source lisible (priorité au prop `source` passé par l'appelant)
+  const resolvedSource = source || token.source
   let sourceLabel = 'Navigateur'
-  if (token.source === 'hyperliquid') sourceLabel = 'Hyperliquid'
-  else if (token.source === 'binance') sourceLabel = 'Binance'
+  if (resolvedSource === 'hyperliquid') sourceLabel = 'Hyperliquid'
+  else if (resolvedSource === 'binance') sourceLabel = 'Binance'
 
   // Gestion clic mobile
+  const attemptAddToken = () => {
+    if (!onAddToken) {
+      return null
+    }
+    const result = onAddToken(selectionKey)
+    if (result?.success) {
+      setIsAnimating(true)
+      setTimeout(() => setIsAnimating(false), 600)
+      setToast({ message: `${symbol} ajouté !`, type: 'success' })
+      console.log('✅', symbol, 'ajouté !')
+    } else if (result?.reason === 'already_exists') {
+      setToast({ message: `${symbol} déjà ajouté`, type: 'warning' })
+      console.warn('⚠️', symbol, 'déjà ajouté')
+    } else if (result?.reason === 'max_reached') {
+      setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+      console.warn('⚠️ Maximum 4 tokens')
+    } else if (result?.reason === 'not_logged_in') {
+      setToast({ message: 'Connecte-toi pour ajouter un token', type: 'warning' })
+    }
+    return result
+  }
+
   const handleClick = (e) => {
-    if (isMobile && draggable && onAddToken) {
+    if (isMobile && draggable) {
       e.preventDefault()
-      const result = onAddToken(`${symbol}:${source}`)
-      if (result?.success) {
-        setIsAnimating(true)
-        setTimeout(() => setIsAnimating(false), 600)
-        setToast({ message: `${symbol} ajouté !`, type: 'success' })
-        console.log('✅', symbol, 'ajouté !')
-      } else if (result?.reason === 'already_exists') {
-        setToast({ message: `${symbol} déjà ajouté`, type: 'warning' })
-        console.warn('⚠️', symbol, 'déjà ajouté')
-      } else if (result?.reason === 'max_reached') {
+      if (isSelected) {
+        handleRemove()
+      } else if (!disableAdd) {
+        attemptAddToken()
+      } else {
         setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
-        console.warn('⚠️ Maximum 4 tokens')
       }
     }
   }
 
+  const handleRemove = () => {
+    if (!onRemoveToken || !isSelected || !selectionKey) {
+      return
+    }
+    Promise.resolve(onRemoveToken(selectionKey))
+      .then(() => {
+        setToast({ message: `${symbol} retiré`, type: 'info' })
+      })
+      .catch((error) => {
+        console.warn('Impossible de retirer le token:', error)
+        setToast({ message: 'Erreur lors du retrait', type: 'warning' })
+      })
+  }
+
+  const handleActionClick = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (isSelected) {
+      handleRemove()
+      return
+    }
+    if (disableAdd) {
+      setToast({ message: 'Maximum 4 tokens atteint', type: 'warning' })
+      return
+    }
+    attemptAddToken()
+  }
+
+  const cardClassNames = [
+    'token-card',
+    token.error && 'token-card--error',
+    isSelected && 'token-card--selected',
+  ].filter(Boolean).join(' ')
+
+  const dragStyle = draggable && !isMobile ? dragProps : {}
+  const dragAttributes = draggable && !isMobile
+    ? {
+        ...dragHandlers,
+        onDragStart: (e) => dragHandlers.onDragStart(e, selectionKey),
+      }
+    : {}
+
   return (
     <>
-    <div 
-      style={{ 
-        ...styles.card, 
-        ...(draggable && !isMobile ? dragProps : {}),
-        cursor: draggable ? (isMobile ? 'pointer' : 'grab') : 'default',
-        userSelect: 'none',
-        WebkitTapHighlightColor: 'transparent',
-        animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none'
-      }}
-      {...(draggable && !isMobile ? dragHandlers : {})}
-      onClick={isMobile && draggable ? handleClick : undefined}
-      onDragStart={draggable && !isMobile ? (e) => dragHandlers.onDragStart(e, `${symbol}:${source}`) : undefined}
-    >
-      <img 
-        src={iconPath} 
-        alt={symbol} 
-        width={40} 
-        height={40} 
-        style={styles.icon}
-        onError={handleError}
-      />
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        <div style={styles.name}>{token.name}</div>
-        <div style={{ ...styles.delta, color, minHeight: 16 }}>
-          {hasDelta ? `(${fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 0)} / ${fmtSignedAbs(token.deltaPct, 2)}%)` : 'Variation...'}
+      <div
+        className={cardClassNames}
+        style={{
+          cursor: draggable ? (isMobile ? 'pointer' : 'grab') : 'default',
+          userSelect: 'none',
+          WebkitTapHighlightColor: 'transparent',
+          animation: isAnimating ? 'pulseSuccess 0.6s ease-out' : 'none',
+          ...dragStyle,
+        }}
+        {...dragAttributes}
+        onClick={isMobile && draggable ? handleClick : undefined}
+      >
+        <div className="token-card__icon">
+          <img src={iconPath} alt={symbol} onError={handleError} />
         </div>
-        <div style={styles.price}>{token.price != null ? fmtUSD(token.price) : '—'}</div>
-        <div style={styles.sub}>
-          {token.error && <span style={{ color: '#ef4444' }}>⛔ {token.error}</span>}
-          {!token.error && (
-            <span>
-              <span style={{ color: token.status === 'live' ? '#22c55e' : '#94a3b8' }}>{statusLabel}</span>
-              {' • '}
-              <span style={{ color: '#64748b' }}>{sourceLabel}</span>
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-    
-    {/* Toast notification */}
-    {toast && (
-      <Toast 
-        message={toast.message} 
-        type={toast.type} 
-        onClose={() => setToast(null)} 
-      />
-    )}
-  </>
-  )
-}
 
-const styles = {
-  card: { display: 'flex', alignItems: 'center', padding: 12, background: '#0f172a', color: '#e5e7eb', borderRadius: 12, border: '1px solid #334155', width: 320, gap: 12 },
-  icon: { borderRadius: '50%', flexShrink: 0 },
-  name: { fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
-  delta: { fontSize: 13, marginBottom: 4 },
-  price: { fontSize: 22, fontWeight: 700, lineHeight: 1.2 },
-  sub: { fontSize: 11, color: '#94a3b8', marginTop: 2 }
+        <div className="token-card__body">
+          <div className="token-card__header">
+            <span className="token-card__symbol">{symbol}</span>
+            <div className="token-card__name" title={token.name}>{token.name}</div>
+            <span className="token-card__source">{sourceLabel}</span>
+          </div>
+
+          <div className="token-card__metrics">
+            <span className="token-card__price">{token.price != null ? fmtUSD(token.price) : '—'}</span>
+            <span className="token-card__delta" style={{ color }}>
+              {hasDelta ? `${fmtSignedAbs(token.deltaPct, 2)}%` : '…'}
+            </span>
+          </div>
+
+          <div className="token-card__meta">
+            {token.error ? (
+              <span style={{ color: '#b91c1c' }}>⛔ {token.error}</span>
+            ) : (
+              <>
+                <span style={{ color: token.status === 'live' ? '#22c55e' : '#94a3b8' }}>{statusLabel}</span>
+                <span>
+                  Δ {hasDelta ? fmtSignedAbs(token.deltaAbs, token.price < 0.01 ? 6 : token.price < 1 ? 4 : 2) : '…'}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={['token-card__action', isSelected && 'token-card__action--remove'].filter(Boolean).join(' ')}
+          onClick={handleActionClick}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          disabled={!isSelected && disableAdd}
+        >
+          {isSelected ? 'Retirer' : 'Ajouter'}
+        </button>
+      </div>
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
+      )}
+    </>
+  )
 }

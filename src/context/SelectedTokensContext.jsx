@@ -1,19 +1,64 @@
 // Contexte pour gérer les tokens sélectionnés (max 4)
 // Utilisé pour le drag & drop de Marmiton Communautaire vers Ma cuisine
 // Synchronisation Firebase pour utilisateurs authentifiés, localStorage sinon
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights } from '../lib/database/userService'
+import { saveSelectedTokens, getSelectedTokens, savePortfolioWeights, getPortfolioWeights } from '../lib/database/userService'
 import { migrateSelectedTokens } from '../lib/database/migrateSelectedTokens'
+import { normalizeHyperliquidSymbol } from '../config/tokenList'
+import { auth } from '../config/firebase'
 
 const SelectedTokensContext = createContext(null)
 
 const MAX_TOKENS = 4
 const LS_KEY = 'selectedTokens_v1'
 
+const normalizeSelectionEntry = (entry) => {
+  if (!entry || typeof entry !== 'string') {
+    return null
+  }
+  const [rawSymbol, rawSource] = entry.split(':')
+  const source = (rawSource || 'hyperliquid').trim().toLowerCase()
+  let symbol = (rawSymbol || '').trim()
+  if (!symbol) {
+    return null
+  }
+  if (source === 'hyperliquid') {
+    symbol = normalizeHyperliquidSymbol(symbol)
+    if (!symbol) {
+      return null
+    }
+  } else {
+    symbol = symbol.toUpperCase()
+  }
+  return `${symbol}:${source}`
+}
+
+const normalizeTokenList = (list) => {
+  if (!Array.isArray(list)) {
+    return []
+  }
+  const seenSymbols = new Set()
+  const result = []
+  list.forEach((entry) => {
+    const normalized = normalizeSelectionEntry(entry)
+    if (!normalized) {
+      return
+    }
+    const symbol = normalized.split(':')[0]
+    if (seenSymbols.has(symbol)) {
+      return
+    }
+    seenSymbols.add(symbol)
+    result.push(normalized)
+  })
+  return result
+}
+
 export function SelectedTokensProvider({ children }) {
   const { user } = useAuth()
   const [userTokens, setUserTokens] = useState([])
+  const skippedSyncRef = useRef(false)
 
   // Charger depuis Firebase quand l'utilisateur se connecte
   useEffect(() => {
@@ -29,7 +74,8 @@ export function SelectedTokensProvider({ children }) {
     // Utilisateur connecté : charger depuis Firebase
     getSelectedTokens(user.uid)
       .then(tokens => {
-        setUserTokens(tokens && tokens.length > 0 ? tokens : [])
+        const normalized = normalizeTokenList(tokens)
+        setUserTokens(normalized)
       })
       .catch(err => {
         console.error('Erreur chargement tokens Firebase:', err)
@@ -44,6 +90,19 @@ export function SelectedTokensProvider({ children }) {
   useEffect(() => {
     if (!user?.uid) return
 
+    const authUid = auth.currentUser?.uid
+    if (!authUid || authUid !== user.uid) {
+      if (!skippedSyncRef.current) {
+        console.info('[SelectedTokens] Sync ignorée : Firebase Auth pas encore aligné', {
+          contextUid: user.uid,
+          authUid,
+        })
+        skippedSyncRef.current = true
+      }
+      return
+    }
+    skippedSyncRef.current = false
+
     // localStorage (synchrone)
     try {
       if (userTokens.length > 0) {
@@ -57,7 +116,16 @@ export function SelectedTokensProvider({ children }) {
 
     // Firebase (asynchrone) - TOUJOURS sauvegarder, même si vide
     saveSelectedTokens(user.uid, userTokens)
-      .catch(err => console.error('Erreur sauvegarde tokens Firebase:', err))
+      .catch(err => {
+        const code = err?.code || err?.message || 'unknown'
+        if (code === 'PERMISSION_DENIED' || code === 'permission_denied') {
+          console.warn('[SelectedTokens] Impossible de synchroniser (permissions)', {
+            uid: user.uid,
+          })
+          return
+        }
+        console.error('Erreur sauvegarde tokens Firebase:', err)
+      })
   }, [userTokens, user?.uid])
 
   // Ajouter un token
@@ -66,10 +134,15 @@ export function SelectedTokensProvider({ children }) {
       console.warn('Utilisateur non connecté')
       return { success: false, reason: 'not_logged_in' }
     }
-    
-    // Extraire le symbole (avant le ':')
-    const symbol = symbolWithSource.split(':')[0]
-    
+
+    const normalizedEntry = normalizeSelectionEntry(symbolWithSource)
+    if (!normalizedEntry) {
+      console.warn('Token invalide ou non supporté:', symbolWithSource)
+      return { success: false, reason: 'invalid_symbol' }
+    }
+
+    const symbol = normalizedEntry.split(':')[0]
+
     // Vérifier si le symbole existe déjà (peu importe la source)
     const symbolExists = userTokens.some(token => token.split(':')[0] === symbol)
     if (symbolExists) {
@@ -78,7 +151,7 @@ export function SelectedTokensProvider({ children }) {
     }
     
     // Éviter doublons exacts (même symbol:source)
-    if (userTokens.includes(symbolWithSource)) {
+    if (userTokens.includes(normalizedEntry)) {
       return { success: false, reason: 'already_exists', symbol }
     }
     
@@ -89,7 +162,7 @@ export function SelectedTokensProvider({ children }) {
     }
     
     // Ajouter le token
-    setUserTokens(prev => [...prev, symbolWithSource])
+    setUserTokens(prev => [...prev, normalizedEntry])
     return { success: true, symbol }
   }
 
@@ -104,7 +177,6 @@ export function SelectedTokensProvider({ children }) {
     if (user?.uid) {
       try {
         // Récupérer les poids actuels depuis Firebase
-        const { getPortfolioWeights } = await import('../lib/database/userService')
         const currentWeights = await getPortfolioWeights(user.uid)
         
         if (currentWeights) {

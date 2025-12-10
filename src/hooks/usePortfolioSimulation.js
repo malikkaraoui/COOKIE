@@ -5,14 +5,21 @@
  */
 
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { 
-  initializeEqualWeights, 
-  redistributeWeights, 
-  calculatePortfolioMetrics 
+import {
+  initializeEqualWeights,
+  redistributeWeights,
+  calculatePortfolioMetrics
 } from '../lib/portfolio/portfolioCalculations'
 import { buildAPYMap } from '../lib/portfolio/portfolioService'
 import { savePortfolioWeights, getPortfolioWeights } from '../lib/database/userService'
 import { useAuth } from './useAuth'
+
+const ENABLE_PORTFOLIO_DEBUG = import.meta.env?.VITE_ENABLE_DEBUG_LOGS === 'true'
+const debugLog = (...args) => {
+  if (ENABLE_PORTFOLIO_DEBUG) {
+    console.log(...args)
+  }
+}
 
 /**
  * Hook de simulation de portfolio dynamique
@@ -20,15 +27,23 @@ import { useAuth } from './useAuth'
  * @param {Array} tokensData - Tableau de { symbol, deltaPct, color } depuis les tokens sélectionnés
  * @returns {Object} { weights, setWeight, capitalInitial, setCapitalInitial, results, tokensData }
  */
-export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
+export function usePortfolioSimulation(initialCapital = 1000, tokensData = [], tokenSymbolList = []) {
   const [capitalInitial, setCapitalInitial] = useState(initialCapital)
   const { user } = useAuth()
+  const isAdjustingWeightsRef = useRef(false)
 
   // Initialiser les poids équitablement selon le nombre de tokens
+  const tokenSymbols = useMemo(() => {
+    if (tokenSymbolList && tokenSymbolList.length > 0) {
+      return tokenSymbolList
+    }
+    return tokensData.map(t => t.symbol)
+  }, [tokenSymbolList, tokensData])
+  const tokenSymbolsKey = useMemo(() => tokenSymbols.slice().sort().join('|'), [tokenSymbols])
+
   const initialWeights = useMemo(() => {
-    const symbols = tokensData.map(t => t.symbol)
-    return initializeEqualWeights(symbols)
-  }, [tokensData])
+    return initializeEqualWeights(tokenSymbols)
+  }, [tokenSymbols])
 
   const [weights, setWeights] = useState(initialWeights)
   const [isLoadingWeights, setIsLoadingWeights] = useState(true)
@@ -36,28 +51,41 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
 
   // Charger les poids sauvegardés depuis Firebase au démarrage
   useEffect(() => {
-    if (!user?.uid || tokensData.length === 0) {
+    if (!user?.uid || tokenSymbols.length === 0) {
       setIsLoadingWeights(false)
       return
     }
 
+    let isMounted = true
+
     async function loadSavedWeights() {
       try {
         const savedWeights = await getPortfolioWeights(user.uid)
-        
+        if (!isMounted) return
+
         if (savedWeights) {
           // Vérifier que les tokens sauvegardés correspondent aux tokens actuels
-          const currentSymbols = tokensData.map(t => t.symbol).sort()
+          const currentSymbols = tokenSymbols.slice().sort()
           const savedSymbols = Object.keys(savedWeights).sort()
           
           const sameTokens = currentSymbols.length === savedSymbols.length &&
             currentSymbols.every((sym, i) => sym === savedSymbols[i])
           
           if (sameTokens) {
-            console.log('✅ Poids restaurés depuis Firebase:', savedWeights)
-            setWeights(savedWeights)
+            debugLog('✅ Poids restaurés depuis Firebase:', savedWeights)
+            if (!isAdjustingWeightsRef.current) {
+              setWeights(prev => {
+                const prevEntries = Object.entries(prev)
+                const savedEntries = Object.entries(savedWeights)
+                if (prevEntries.length === savedEntries.length &&
+                  prevEntries.every(([k, v]) => savedWeights[k] === v)) {
+                  return prev
+                }
+                return savedWeights
+              })
+            }
           } else {
-            console.log('⚠️ Tokens changés, reset aux poids équitables')
+            debugLog('⚠️ Tokens changés, reset aux poids équitables')
             setWeights(initialWeights)
             // Sauvegarder immédiatement les nouveaux poids
             if (user?.uid) {
@@ -71,12 +99,18 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
         console.error('❌ Erreur chargement poids:', error)
         setWeights(initialWeights)
       } finally {
-        setIsLoadingWeights(false)
+        if (isMounted) {
+          setIsLoadingWeights(false)
+        }
       }
     }
 
     loadSavedWeights()
-  }, [user?.uid, tokensData, initialWeights])
+
+    return () => {
+      isMounted = false
+    }
+  }, [user?.uid, tokenSymbolsKey, initialWeights, tokenSymbols])
 
   // Réinitialiser les poids quand tokensData change (ajout/suppression)
   // Mais seulement si les tokens ont changé
@@ -84,16 +118,16 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
     if (isLoadingWeights) return // Attendre le chargement initial
     
     const currentSymbols = Object.keys(weights).sort().join(',')
-    const newSymbols = tokensData.map(t => t.symbol).sort().join(',')
+    const newSymbols = tokenSymbols.slice().sort().join(',')
     
     if (currentSymbols !== newSymbols) {
-      console.log('🔄 Tokens modifiés, reset des poids')
+      debugLog('🔄 Tokens modifiés, reset des poids')
       setWeights(initialWeights)
       
       // Sauvegarder immédiatement les nouveaux poids
       if (user?.uid) {
-        savePortfolioWeights(user.uid, initialWeights)
-          .then(() => console.log('💾 Nouveaux poids sauvegardés après changement'))
+        savePortfolioWeights(user?.uid, initialWeights)
+          .then(() => debugLog('💾 Nouveaux poids sauvegardés après changement'))
           .catch(err => console.error('❌ Erreur sauvegarde après changement:', err))
       }
     }
@@ -105,32 +139,39 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
    * Sauvegarde automatiquement dans Firebase (debounced 500ms)
    */
   const setWeight = (token, newWeight) => {
+    isAdjustingWeightsRef.current = true
     const newWeights = redistributeWeights(weights, token, newWeight)
     setWeights(newWeights)
     
     // Sauvegarde différée (debounce) pour éviter trop d'écritures pendant l'ajustement
-    if (user?.uid) {
-      // Annuler le timer précédent
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current)
-      }
-      
-      // Sauvegarder après 500ms d'inactivité
-      saveTimerRef.current = setTimeout(async () => {
-        try {
-          await savePortfolioWeights(user.uid, newWeights)
-          console.log('💾 Poids sauvegardés:', newWeights)
-        } catch (error) {
-          console.error('❌ Erreur sauvegarde poids:', error)
-        }
-      }, 500)
+    if (!user?.uid) {
+      isAdjustingWeightsRef.current = false
+      return
     }
+
+    // Annuler le timer précédent
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+    }
+    
+    // Sauvegarder après 600ms d'inactivité
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await savePortfolioWeights(user.uid, newWeights)
+        debugLog('💾 Poids sauvegardés:', newWeights)
+      } catch (error) {
+        console.error('❌ Erreur sauvegarde poids:', error)
+      } finally {
+        isAdjustingWeightsRef.current = false
+      }
+    }, 600)
   }
 
   /**
    * Réinitialiser les poids à l'équilibre
    */
   const resetWeights = async () => {
+    isAdjustingWeightsRef.current = true
     setWeights(initialWeights)
     
     // Annuler le debounce en cours
@@ -142,10 +183,14 @@ export function usePortfolioSimulation(initialCapital = 1000, tokensData = []) {
     if (user?.uid) {
       try {
         await savePortfolioWeights(user.uid, initialWeights)
-        console.log('💾 Poids réinitialisés et sauvegardés')
+        debugLog('💾 Poids réinitialisés et sauvegardés')
       } catch (error) {
         console.error('❌ Erreur sauvegarde reset:', error)
+      } finally {
+        isAdjustingWeightsRef.current = false
       }
+    } else {
+      isAdjustingWeightsRef.current = false
     }
   }
 

@@ -5,6 +5,19 @@ Toutes les modifications majeures du projet COOKIE.
 ## [Unreleased]
 - À définir.
 
+## [2025-12-03] Ajustements carnet multi-ordre & avatar
+
+### Frontend (React)
+- `Page2.jsx` :
+  - Détection dynamique de la précision prix (saisie manuelle, nudges, auto-price) avec mémorisation par ligne d’ordre.
+  - Normalisation stricte des inputs numériques (validation, quantization et finalisation au blur).
+  - Amélioration des valeurs par défaut (autoPrice/autoSize) lors de l’ajout/suppression d’ordres.
+- `MarketDataProvider.jsx` : remise à zéro explicite du champ `error` lorsque Hyperliquid renvoie un tick valide, pour éviter les faux positifs.
+- `useAvatar.js` : transition non bloquante + cache/mémoïsation du fallback SVG afin de supprimer les warnings React et stabiliser le rendu.
+
+### Qualité
+- `npm run build` & `npm run lint`.
+
 ## [2025-11-26] Intégration Stripe et fiabilisation APY (simulateur)
 
 ### Backend (Firebase Functions)

@@ -1,101 +1,21 @@
 /* Styles du module d'authentification */
 
-/* Bouton de connexion Google */
-.login-button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  background: white;
-  border: 1px solid #dadce0;
-  border-radius: 4px;
+.auth-nav-button {
+  width: 100%;
+  border: none;
+  background: none;
+  text-decoration: none;
+  text-align: left;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: #3c4043;
-  transition: all 0.2s ease;
+  font: inherit;
 }
 
-.login-button:hover {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  background: #fafafa;
+.auth-nav-button:focus-visible {
+  outline: 2px solid rgba(255, 153, 0, 0.4);
+  outline-offset: 2px;
 }
 
-.google-icon {
+.auth-nav-button .nav-link-icon svg {
   width: 18px;
   height: 18px;
-  flex-shrink: 0;
-}
-
-/* État de chargement */
-.login-loading {
-  padding: 8px 16px;
-  color: #999;
-  font-size: 14px;
-}
-
-/* Profil utilisateur connecté */
-.user-profile {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
-}
-
-.user-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.user-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #3c4043;
-}
-
-/* Bouton de déconnexion */
-.logout-button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 12px 16px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  color: #5f6368;
-  transition: background-color 0.2s ease;
-  text-align: left;
-  border-radius: 6px;
-}
-
-.logout-button:hover {
-  background-color: rgba(0, 0, 0, 0.04);
-}
-
-.logout-button span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex: 1;
-}
-
-.logout-icon {
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-}
-
-.logout-button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }

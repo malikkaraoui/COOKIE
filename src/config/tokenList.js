@@ -31,11 +31,12 @@ export const TOKENS = [
     source: 'hyperliquid'  // BNB depuis Hyperliquid pour page1
   },
   {
-    symbol: 'MATIC',
-    name: 'Polygon',
+    symbol: 'POL',
+    name: 'Polygon (POL)',
     color: '#8247E5',
     decimals: 2,
-    source: 'hyperliquid'
+    source: 'hyperliquid',
+    aliases: ['MATIC']
   },
   {
     symbol: 'kPEPE',
@@ -75,8 +76,27 @@ export const TOKENS = [
 ]
 
 // Helper : récupérer config d'un token par symbole
+const TOKEN_CANONICAL_LOOKUP = TOKENS.reduce((acc, token) => {
+  acc[token.symbol.toUpperCase()] = token.symbol
+  if (Array.isArray(token.aliases)) {
+    token.aliases.forEach((alias) => {
+      acc[alias.toUpperCase()] = token.symbol
+    })
+  }
+  return acc
+}, {})
+
+export function normalizeHyperliquidSymbol(symbol) {
+  const normalized = typeof symbol === 'string' ? symbol.trim().toUpperCase() : ''
+  if (!normalized) {
+    return ''
+  }
+  return TOKEN_CANONICAL_LOOKUP[normalized] || normalized
+}
+
 export function getTokenConfig(symbol) {
-  return TOKENS.find(t => t.symbol === symbol)
+  const canonical = normalizeHyperliquidSymbol(symbol)
+  return TOKENS.find(t => t.symbol === canonical)
 }
 
 // Helper : liste des symboles pour requête API

@@ -123,13 +123,6 @@ export async function setCachedPriceHyper(coin, priceData) {
     return
   }
 
-  console.log(`💾 Écriture cache Hyperliquid ${coin}:`, {
-    price: priceData.price,
-    prevDayPx: priceData.prevDayPx,
-    deltaAbs: priceData.deltaAbs,
-    deltaPct: priceData.deltaPct
-  })
-
   try {
     const cacheRef = ref(db, `priceTokenHyper/${coin}`)
     
@@ -143,8 +136,6 @@ export async function setCachedPriceHyper(coin, priceData) {
     }
     
     await set(cacheRef, dataToCache)
-    
-    console.log(`✅ Prix ${coin} écrit dans cache Hyperliquid!`)
   } catch (error) {
     console.error(`❌ Erreur cache Hyperliquid ${coin}:`, error.code, error.message)
   }
@@ -167,13 +158,6 @@ export async function setCachedPriceBinance(coin, priceData) {
     return
   }
 
-  console.log(`💾 Écriture cache Binance ${coin}:`, {
-    price: priceData.price,
-    prevDayPx: priceData.prevDayPx,
-    deltaAbs: priceData.deltaAbs,
-    deltaPct: priceData.deltaPct
-  })
-
   try {
     const cacheRef = ref(db, `priceTokenBinance/${coin}`)
     
@@ -187,8 +171,6 @@ export async function setCachedPriceBinance(coin, priceData) {
     }
     
     await set(cacheRef, dataToCache)
-    
-    console.log(`✅ Prix ${coin} écrit dans cache Binance!`)
   } catch (error) {
     console.error(`❌ Erreur cache Binance ${coin}:`, error.code, error.message)
   }

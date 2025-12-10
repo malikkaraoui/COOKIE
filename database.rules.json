@@ -13,16 +13,22 @@
       }
     },
     "priceTokenHyper": {
+      ".read": true,
       "$coin": {
         ".read": true,
         ".write": true
       }
     },
     "priceTokenBinance": {
+      ".read": true,
       "$coin": {
         ".read": true,
         ".write": true
       }
+    },
+    "hyperliquidFundingStrategies": {
+      ".read": "auth != null",
+      ".write": false
     }
   }
 }

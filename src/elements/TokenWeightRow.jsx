@@ -10,7 +10,9 @@ import TokenWeightSlider from './TokenWeightSlider'
  * - sinon -> useToken(symbol) (Hyperliquid)
  */
 export default function TokenWeightRow({ symbol, source = 'hyperliquid', color, weight, onChange }) {
-  const marketData = source === 'binance' ? useBinanceToken(symbol) : useToken(symbol)
+  const hyperliquidData = useToken(symbol)
+  const binanceData = useBinanceToken(symbol)
+  const marketData = source === 'binance' ? binanceData : hyperliquidData
 
   // APY: priorite au deltaPct fourni; sinon calcul via price/prevDayPx
   const apy = useMemo(() => {

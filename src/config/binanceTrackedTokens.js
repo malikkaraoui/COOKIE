@@ -32,7 +32,7 @@ export const BINANCE_DEFAULT_TOKENS = [
   // DeFi blue chips
   { id: "LINK", symbol: "LINKUSDT", baseAsset: "LINK", quoteAsset: "USDT", source: "binance-spot" },
   { id: "DOT",  symbol: "DOTUSDT",  baseAsset: "DOT",  quoteAsset: "USDT", source: "binance-spot" },
-  { id: "MATIC",symbol: "MATICUSDT",baseAsset: "MATIC",quoteAsset: "USDT", source: "binance-spot" },
+  { id: "POL",  symbol: "POLUSDT",  baseAsset: "POL",  quoteAsset: "USDT", source: "binance-spot" },
   { id: "UNI",  symbol: "UNIUSDT",  baseAsset: "UNI",  quoteAsset: "USDT", source: "binance-spot" },
   { id: "RUNE", symbol: "RUNEUSDT", baseAsset: "RUNE", quoteAsset: "USDT", source: "binance-spot" },
   { id: "INJ",  symbol: "INJUSDT",  baseAsset: "INJ",  quoteAsset: "USDT", source: "binance-spot" },
