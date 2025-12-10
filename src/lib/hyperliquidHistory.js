@@ -125,11 +125,19 @@ export async function fetchHyperliquidReturns(coin, timeframes = DEFAULT_HISTORY
     returns[days] = ((lastClose - referenceClose) / referenceClose) * 100
   })
 
+  const series = sorted
+    .map((candle) => ({
+      time: Number(candle?.T ?? candle?.t) || null,
+      close: Number(candle?.c)
+    }))
+    .filter((entry) => Number.isFinite(entry.time) && Number.isFinite(entry.close) && entry.close > 0)
+
   return {
     symbol: normalized,
     returns,
     lastClose,
     lastTimestamp: Number(lastCandle?.T ?? lastCandle?.t) || null,
-    sampleSize: sorted.length
+    sampleSize: sorted.length,
+    series
   }
 }

@@ -15,6 +15,7 @@ import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useHyperliquidAccount } from '../hooks/useHyperliquidAccount'
 import { useHyperliquidHistory } from '../hooks/useHyperliquidHistory'
+import { useCcxtHistory } from '../hooks/useCcxtHistory'
 import { useMarketData } from '../providers/MarketDataProvider'
 import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
@@ -619,6 +620,15 @@ export default function Page2() {
 
   const hasBinanceOrderableTokens = binanceOrderableSymbols.length > 0
 
+  const ccxtSymbols = useMemo(() => {
+    return binanceSelectedEntries
+      .map((entry) => {
+        const [symbol] = entry.split(':')
+        return symbol ? symbol.trim().toUpperCase() : null
+      })
+      .filter(Boolean)
+  }, [binanceSelectedEntries])
+
   const findCanonicalSymbol = useCallback((value) => {
     const normalized = normalizeSymbol(value)
     if (!normalized) {
@@ -702,11 +712,19 @@ export default function Page2() {
   const {
     data: historicalReturns,
     loading: historicalLoading,
-    error: historicalError,
-    lastUpdated: historicalUpdatedAt
+    error: historicalError
   } = useHyperliquidHistory(hyperliquidSymbols, {
     timeframes: [5, 10, 15, 20],
     enabled: portfolioTokensData.length > 0
+  })
+
+  const {
+    data: ccxtHistoryData,
+    loading: ccxtHistoryLoading,
+    error: ccxtHistoryError
+  } = useCcxtHistory(ccxtSymbols, {
+    timeframes: [5, 10, 15, 20],
+    enabled: ccxtSymbols.length > 0
   })
 
   const tokenPriceMap = useMemo(() => {
@@ -760,17 +778,6 @@ export default function Page2() {
 
   const canUsePortfolioAutoOrder = hasOrderableTokens && resolvedPortfolioBudgetUsd >= MIN_ORDER_NOTIONAL_USDC
 
-  const heroBudgetLabel = formatNumericString(resolvedPortfolioBudgetUsd ?? 0, {
-    maximumFractionDigits: 0,
-    limitHighValues: true
-  })
-  const heroWalletLabel = Number.isFinite(hyperliquidWalletAvailableUsd)
-    ? formatNumericString(hyperliquidWalletAvailableUsd, {
-      maximumFractionDigits: 0,
-      limitHighValues: true
-    })
-    : '—'
-  const heroLastSyncLabel = hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'
   const totalWeightPercent = useMemo(() => {
     if (!weights) {
       return 0
@@ -3167,12 +3174,6 @@ export default function Page2() {
           </h1>
           <p className="k-paragraph-light">Hyperliquid &amp; Binance en un seul espace.</p>
         </div>
-        <div className="kitchen-hero__meta">
-          <span className="kitchen-chip">Tokens {count}/4</span>
-          <span className="kitchen-chip">Budget {heroBudgetLabel} USDC</span>
-          <span className="kitchen-chip">Wallet {heroWalletLabel} USDC</span>
-          <span className="kitchen-chip">MAJ {heroLastSyncLabel}</span>
-        </div>
       </header>
 
       {renderHyperliquidAccountSummary()}
@@ -3518,55 +3519,34 @@ export default function Page2() {
         </div>
       </section>
 
-      <section className="k-card k-card--ghost">
+      <section className="k-card k-card--accent k-card--stacked">
         <div className="k-card__head">
           <div>
-            <p className="k-tag">Backtests</p>
-            <h3 className="k-card__title">Résultats express</h3>
-          </div>
-        </div>
-        <PortfolioResults results={results} />
-      </section>
-
-      <section className="k-card k-card--accent">
-        <div className="k-card__head">
-          <div>
-            <p className="k-tag">Vision 5 / 10 / 15 / 20 jours</p>
-            <h3 className="k-card__title">📈 Historique multi-jours Hyperliquid</h3>
+            <p className="k-tag">Backtests · Vision 5 / 10 / 15 / 20 jours</p>
+            <h3 className="k-card__title">Résultats express & historique multi-jours</h3>
             <p className="k-paragraph-light">
-              Compare la trajectoire réelle de chaque token à ton portefeuille pondéré.
+              Analyse instantanément la performance simulée et compare-la à la trajectoire réelle Hyperliquid.
             </p>
           </div>
         </div>
-        <div className="k-metrics">
-          <div className="k-metric">
-            <span>Budget simulé</span>
-            <strong>
-              {formatNumericString(projectionCapital, {
-                maximumFractionDigits: 0,
-                limitHighValues: true
-              })} USDC
-            </strong>
-          </div>
-          <div className="k-metric">
-            <span>Tokens suivis</span>
-            <strong>{selectedSymbols.length || 0}</strong>
-          </div>
-          <div className="k-metric">
-            <span>Mise à jour</span>
-            <strong>{historicalUpdatedAt ? formatTimestamp(historicalUpdatedAt) : '—'}</strong>
+        <div className="k-results-stage">
+          <PortfolioResults results={results} />
+          <div className="k-results-stage__chart">
+            {historicalLoading && <p className="k-note">⏳ Synchronisation Hyperliquid…</p>}
+            {!historicalLoading && historicalError && (
+              <p className="k-note k-note--error">{historicalError.message || 'Historique indisponible'}</p>
+            )}
+            <KitchenPerformanceChart
+              tokensData={tokensData}
+              weights={weights}
+              capital={projectionCapital}
+              historyData={historicalReturns}
+              ccxtHistoryData={ccxtHistoryData}
+              historyLoading={historicalLoading || ccxtHistoryLoading}
+              historyError={historicalError || ccxtHistoryError}
+            />
           </div>
         </div>
-        {historicalLoading && <p className="k-note">⏳ Synchronisation Hyperliquid…</p>}
-        {!historicalLoading && historicalError && (
-          <p className="k-note k-note--error">{historicalError.message || 'Historique indisponible'}</p>
-        )}
-        <KitchenPerformanceChart
-          tokensData={portfolioTokensData}
-          weights={weights}
-          capital={projectionCapital}
-          historyData={historicalReturns}
-        />
       </section>
 
       <section className="k-card">

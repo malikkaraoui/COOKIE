@@ -192,6 +192,7 @@ const {
   upsertFundingStrategyState,
   fundingMetrics,
   hyperliquidInfoProxy,
+  ccxtHistory,
 } = require("./src/index");
 
 exports.placeTestOrder = placeTestOrder;
@@ -211,3 +212,4 @@ exports.getFundingStrategyState = getFundingStrategyState;
 exports.upsertFundingStrategyState = upsertFundingStrategyState;
 exports.fundingMetrics = fundingMetrics;
 exports.hyperliquidInfoProxy = hyperliquidInfoProxy;
+exports.ccxtHistory = ccxtHistory;

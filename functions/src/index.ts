@@ -16,3 +16,4 @@ export { getFundingStrategyState } from "./handlers/strategy/getFundingStrategyS
 export { upsertFundingStrategyState } from "./handlers/strategy/upsertFundingStrategyState";
 export { fundingMetrics } from "./handlers/fundingMetrics";
 export { hyperliquidInfoProxy } from "./handlers/hyperliquidInfoProxy";
+export { ccxtHistory } from "./handlers/ccxtHistory";

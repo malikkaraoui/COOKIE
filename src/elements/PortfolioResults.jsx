@@ -4,66 +4,38 @@
  */
 
 export default function PortfolioResults({ results }) {
-  const { valeurFinale, profit, rendementPct } = results
+  const { valeurFinale = 0, profit = 0, rendementPct = 0 } = results || {}
 
   const metrics = [
     {
-      label: 'Valeur Finale',
+      label: 'Valeur finale',
       value: `${valeurFinale.toFixed(2)} $`,
-      color: '#3b82f6',
+      trend: 'neutral',
       icon: '📊'
     },
     {
       label: 'Profit',
       value: `${profit >= 0 ? '+' : ''}${profit.toFixed(2)} $`,
-      color: profit >= 0 ? '#22c55e' : '#ef4444',
+      trend: profit >= 0 ? 'positive' : 'negative',
       icon: profit >= 0 ? '📈' : '📉'
     },
     {
-      label: 'Rendement Total',
+      label: 'Rendement total',
       value: `${rendementPct >= 0 ? '+' : ''}${rendementPct.toFixed(2)}%`,
-      color: rendementPct >= 0 ? '#22c55e' : '#ef4444',
+      trend: rendementPct >= 0 ? 'positive' : 'negative',
       icon: '🎯'
     }
   ]
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      gap: '16px',
-      marginBottom: '32px'
-    }}>
-      {metrics.map((metric, idx) => (
-        <div
-          key={idx}
-          style={{
-            background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-            borderRadius: '16px',
-            padding: '20px',
-            border: '1px solid #334155',
-            textAlign: 'center'
-          }}
-        >
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>
-            {metric.icon}
-          </div>
-          <div style={{ 
-            color: '#94a3b8', 
-            fontSize: '12px', 
-            marginBottom: '8px',
-            textTransform: 'uppercase',
-            fontWeight: '600'
-          }}>
+    <div className="k-results-grid">
+      {metrics.map((metric) => (
+        <div key={metric.label} className={`k-results-metric k-results-metric--${metric.trend}`}>
+          <span className="k-results-label">
+            <span className="k-results-icon" aria-hidden="true">{metric.icon}</span>
             {metric.label}
-          </div>
-          <div style={{ 
-            color: metric.color, 
-            fontSize: '24px', 
-            fontWeight: 'bold' 
-          }}>
-            {metric.value}
-          </div>
+          </span>
+          <strong className="k-results-value">{metric.value}</strong>
         </div>
       ))}
     </div>
