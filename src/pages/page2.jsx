@@ -108,6 +108,45 @@ const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
 const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
 
+const BUDGET_MODES = {
+  WALLET: 'wallet',
+  CUSTOM: 'custom'
+}
+const BUDGET_MODE_STORAGE_KEY = 'kitchenBudgetMode'
+const BUDGET_RATIO_STORAGE_KEY = 'kitchenWalletRatio'
+const AUTO_BUDGET_DEFAULT_RATIO = 0.25
+const AUTO_BUDGET_MIN_RATIO = 0.05
+
+const clampBudgetRatio = (value) => {
+  if (!Number.isFinite(value)) {
+    return AUTO_BUDGET_DEFAULT_RATIO
+  }
+  if (value < AUTO_BUDGET_MIN_RATIO) {
+    return AUTO_BUDGET_MIN_RATIO
+  }
+  if (value > 1) {
+    return 1
+  }
+  return value
+}
+
+const readBudgetModeFromStorage = () => {
+  if (typeof window === 'undefined') {
+    return BUDGET_MODES.WALLET
+  }
+  const stored = window.localStorage.getItem(BUDGET_MODE_STORAGE_KEY)
+  return stored === BUDGET_MODES.CUSTOM ? BUDGET_MODES.CUSTOM : BUDGET_MODES.WALLET
+}
+
+const readBudgetRatioFromStorage = () => {
+  if (typeof window === 'undefined') {
+    return AUTO_BUDGET_DEFAULT_RATIO
+  }
+  const raw = window.localStorage.getItem(BUDGET_RATIO_STORAGE_KEY)
+  const numeric = Number(raw)
+  return clampBudgetRatio(numeric)
+}
+
 const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   acc[token.id.toUpperCase()] = token
   return acc
@@ -413,6 +452,31 @@ export default function Page2() {
   const [binanceRecentOrders, setBinanceRecentOrders] = useState([])
   const [orderForms, setOrderForms] = useState(() => ([createBlankOrder()]))
   const [binanceOrderForms, setBinanceOrderForms] = useState(() => ([createBlankBinanceOrder()]))
+  const [budgetMode, setBudgetMode] = useState(() => readBudgetModeFromStorage())
+  const [walletBudgetRatio, setWalletBudgetRatio] = useState(() => readBudgetRatioFromStorage())
+  const [manualBudgetInput, setManualBudgetInput] = useState('1000')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      window.localStorage.setItem(BUDGET_MODE_STORAGE_KEY, budgetMode)
+    } catch {
+      // Ignorer stockage indisponible (mode privé)
+    }
+  }, [budgetMode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+    try {
+      window.localStorage.setItem(BUDGET_RATIO_STORAGE_KEY, String(walletBudgetRatio))
+    } catch {
+      // Ignorer stockage indisponible (mode privé)
+    }
+  }, [walletBudgetRatio])
 
   // Détection mobile
   useEffect(() => {
@@ -464,9 +528,9 @@ export default function Page2() {
 
   const hyperliquidWalletAvailableUsd = useMemo(() => {
     const candidates = [
-      hlSpot?.availableUsd,
+      hlPerp?.withdrawable,
       hlTotals?.availableUsd,
-      hlPerp?.withdrawable
+      hlSpot?.availableUsd
     ]
     for (const raw of candidates) {
       const numeric = typeof raw === 'string' ? Number(raw) : raw
@@ -475,9 +539,7 @@ export default function Page2() {
       }
     }
     return null
-  }, [hlSpot?.availableUsd, hlTotals?.availableUsd, hlPerp?.withdrawable])
-
-
+  }, [hlPerp?.withdrawable, hlTotals?.availableUsd, hlSpot?.availableUsd])
 
   const hyperliquidSelectedEntries = useMemo(() => {
     return selectedTokens.filter((entry) => {
@@ -607,6 +669,111 @@ export default function Page2() {
     }, {})
   }, [tokensData])
 
+  const {
+    capitalInitial,
+    setCapitalInitial,
+    weights,
+    setWeight,
+    resetWeights,
+    results
+  } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
+
+  const resolvedPortfolioBudgetUsd = useMemo(() => {
+    const numericCapital = Number(capitalInitial)
+    if (Number.isFinite(numericCapital) && numericCapital > 0) {
+      return numericCapital
+    }
+    if (Number.isFinite(hyperliquidWalletAvailableUsd)) {
+      return hyperliquidWalletAvailableUsd
+    }
+    return 0
+  }, [capitalInitial, hyperliquidWalletAvailableUsd])
+
+  const canUsePortfolioAutoOrder = hasOrderableTokens && resolvedPortfolioBudgetUsd >= MIN_ORDER_NOTIONAL_USDC
+
+  useEffect(() => {
+    if (budgetMode !== BUDGET_MODES.CUSTOM) {
+      return
+    }
+    if (manualBudgetEditingRef.current) {
+      return
+    }
+    if (!Number.isFinite(capitalInitial)) {
+      setManualBudgetInput('')
+      return
+    }
+    setManualBudgetInput(trimTrailingZeros(capitalInitial))
+  }, [budgetMode, capitalInitial])
+
+  const handleBudgetModeChange = (mode) => {
+    if (mode === budgetMode) {
+      return
+    }
+    setBudgetMode(mode)
+    manualBudgetEditingRef.current = false
+    if (mode === BUDGET_MODES.CUSTOM) {
+      if (Number.isFinite(capitalInitial)) {
+        setManualBudgetInput(trimTrailingZeros(capitalInitial))
+      } else {
+        setManualBudgetInput('')
+      }
+      if (manualBudgetSaveTimerRef.current) {
+        clearTimeout(manualBudgetSaveTimerRef.current)
+        manualBudgetSaveTimerRef.current = null
+      }
+    } else if (manualBudgetSaveTimerRef.current) {
+      clearTimeout(manualBudgetSaveTimerRef.current)
+      manualBudgetSaveTimerRef.current = null
+    }
+  }
+
+  const handleWalletRatioChange = (event) => {
+    const percentValue = Number(event?.target?.value)
+    if (!Number.isFinite(percentValue)) {
+      return
+    }
+    const nextRatio = clampBudgetRatio(percentValue / 100)
+    setWalletBudgetRatio(nextRatio)
+  }
+
+  const handleManualBudgetInputFocus = () => {
+    manualBudgetEditingRef.current = true
+  }
+
+  const handleManualBudgetInputBlur = () => {
+    manualBudgetEditingRef.current = false
+    if (budgetMode !== BUDGET_MODES.CUSTOM) {
+      return
+    }
+    if (!Number.isFinite(capitalInitial)) {
+      setManualBudgetInput('')
+      return
+    }
+    setManualBudgetInput(trimTrailingZeros(capitalInitial))
+  }
+
+  const handleManualBudgetInputChange = (event) => {
+    if (budgetMode !== BUDGET_MODES.CUSTOM) {
+      return
+    }
+    const rawValue = normalizeDecimalInput(event.target.value)
+    if (!isValidDecimalInput(rawValue)) {
+      return
+    }
+    setManualBudgetInput(rawValue)
+    const canonical = toCanonicalDecimalString(rawValue)
+    if (!canonical || canonical === '.' || canonical === ',' || canonical === '-') {
+      return
+    }
+    const numericValue = Number(canonical)
+    if (!Number.isFinite(numericValue)) {
+      return
+    }
+    const roundedValue = Math.max(0, Math.round(numericValue * 100) / 100)
+    setCapitalInitial(roundedValue)
+    queueManualBudgetSave(roundedValue)
+  }
+
   const computeAutoLimitPrice = useCallback((symbol, source = 'hyperliquid') => {
     if (!symbol) return ''
     const key = buildMarketDataKey(symbol, source)
@@ -724,19 +891,27 @@ export default function Page2() {
 
   
   // Simulateur de portfolio avec les tokens dynamiques
-  const {
-    setCapitalInitial,
-    weights,
-    setWeight,
-    resetWeights,
-    results
-  } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
-
-
   const lastSyncedCapitalRef = useRef(null)
   const priceNudgeIntervalRef = useRef(null)
   const binancePriceNudgeIntervalRef = useRef(null)
   const binanceRecentNotifiedRef = useRef(new Set())
+  const manualBudgetEditingRef = useRef(false)
+  const manualBudgetSaveTimerRef = useRef(null)
+
+  const queueManualBudgetSave = useCallback((value) => {
+    if (!user?.uid) {
+      return
+    }
+    lastSyncedCapitalRef.current = value
+    if (manualBudgetSaveTimerRef.current) {
+      clearTimeout(manualBudgetSaveTimerRef.current)
+    }
+    manualBudgetSaveTimerRef.current = setTimeout(() => {
+      saveInitialCapital(user.uid, value).catch((error) => {
+        console.error('Erreur sauvegarde budget manuel:', error)
+      })
+    }, 500)
+  }, [user?.uid])
 
   // Synchronise le capital initial avec Firebase quand l'utilisateur est connecté
   useEffect(() => {
@@ -787,6 +962,10 @@ export default function Page2() {
         clearInterval(binancePriceNudgeIntervalRef.current)
         binancePriceNudgeIntervalRef.current = null
       }
+      if (manualBudgetSaveTimerRef.current) {
+        clearTimeout(manualBudgetSaveTimerRef.current)
+        manualBudgetSaveTimerRef.current = null
+      }
     }
   }, [])
 
@@ -794,7 +973,11 @@ export default function Page2() {
     if (!Number.isFinite(hyperliquidWalletAvailableUsd)) {
       return
     }
-    const normalized = Math.max(0, Math.round(hyperliquidWalletAvailableUsd * 100) / 100)
+    if (budgetMode !== BUDGET_MODES.WALLET) {
+      return
+    }
+    const safeRatio = clampBudgetRatio(walletBudgetRatio)
+    const normalized = Math.max(0, Math.round(hyperliquidWalletAvailableUsd * safeRatio * 100) / 100)
     setCapitalInitial((prev) => {
       if (Math.abs((prev ?? 0) - normalized) < 0.01) {
         return prev
@@ -814,7 +997,7 @@ export default function Page2() {
     saveInitialCapital(user.uid, normalized).catch((error) => {
       console.error('Erreur synchro capital Hyperliquid:', error)
     })
-  }, [hyperliquidWalletAvailableUsd, user?.uid, setCapitalInitial])
+  }, [hyperliquidWalletAvailableUsd, user?.uid, setCapitalInitial, budgetMode, walletBudgetRatio])
 
   const updateOrderField = (index, field, value) => {
     setOrderForms((prev) =>
@@ -1449,6 +1632,159 @@ export default function Page2() {
     })
   }
 
+  const buildPortfolioOrders = useCallback(() => {
+    const issues = []
+    const breakdown = []
+    const plannedOrders = []
+
+    if (!hasOrderableTokens) {
+      issues.push('Ajoute des tokens Hyperliquid dans ton panier avant de lancer cet achat automatique.')
+      return { plannedOrders, breakdown, issues, totalNotionalUsd: 0 }
+    }
+
+    const budgetUsd = Number(resolvedPortfolioBudgetUsd)
+    if (!Number.isFinite(budgetUsd) || budgetUsd <= 0) {
+      issues.push('Définis un budget Hyperliquid positif pour utiliser la répartition du portfolio.')
+      return { plannedOrders, breakdown, issues, totalNotionalUsd: 0 }
+    }
+
+    const symbolsWithWeight = orderableSymbols
+      .map((symbol) => ({ symbol, weight: Number(weights[symbol] ?? 0) }))
+      .filter((entry) => entry.weight > 0)
+
+    if (!symbolsWithWeight.length) {
+      issues.push('La répartition actuelle attribue 0% aux tokens Hyperliquid.')
+      return { plannedOrders, breakdown, issues, totalNotionalUsd: 0 }
+    }
+
+    let aggregatedUsd = 0
+
+    symbolsWithWeight.forEach(({ symbol, weight }) => {
+      const livePrice = tokenPriceMap?.[symbol]
+      if (!Number.isFinite(livePrice) || livePrice <= 0) {
+        issues.push(`Prix marché indisponible pour ${symbol}.`)
+        return
+      }
+
+      const targetNotional = budgetUsd * weight
+      if (targetNotional < MIN_ORDER_NOTIONAL_USDC) {
+        issues.push(`Allocation ${symbol} trop faible (${formatNumericString(targetNotional, { maximumFractionDigits: 2, limitHighValues: true })} < ${MIN_ORDER_NOTIONAL_USDC} USDC).`)
+        return
+      }
+
+      const autoPrice = computeAutoLimitPrice(symbol) || quantizePrice(symbol, livePrice) || String(livePrice)
+      const priceValue = parseDecimalValue(autoPrice)
+      if (!Number.isFinite(priceValue) || priceValue <= 0) {
+        issues.push(`Prix limite invalide pour ${symbol}.`)
+        return
+      }
+
+      const rawSize = targetNotional / priceValue
+      const normalizedSize = quantizeSize(symbol, rawSize, 'round')
+      if (!normalizedSize) {
+        issues.push(`Impossible de calculer la taille pour ${symbol}.`)
+        return
+      }
+
+      const finalSize = applyMinSizeUnits(symbol, normalizedSize)
+      plannedOrders.push({
+        symbol,
+        side: 'buy',
+        size: finalSize,
+        price: autoPrice
+      })
+
+      breakdown.push({
+        symbol,
+        weight,
+        notionalUsd: targetNotional,
+        size: finalSize,
+        price: priceValue
+      })
+
+      aggregatedUsd += targetNotional
+    })
+
+    return { plannedOrders, breakdown, issues, totalNotionalUsd: aggregatedUsd }
+  }, [
+    hasOrderableTokens,
+    resolvedPortfolioBudgetUsd,
+    orderableSymbols,
+    weights,
+    tokenPriceMap,
+    computeAutoLimitPrice
+  ])
+
+  const submitHyperliquidOrders = useCallback(async (orders, context = {}) => {
+    const sanitizedOrders = Array.isArray(orders)
+      ? orders.filter((order) => order?.symbol && order?.size && order?.price)
+      : []
+
+    if (!sanitizedOrders.length) {
+      setOrderStatus({
+        state: 'error',
+        message: context.emptyMessage || 'Ajoute au moins un ordre valide (token, taille, prix)',
+        payload: null
+      })
+      return { ok: false }
+    }
+
+    const totalNotionalUsd = sanitizedOrders.reduce((sum, order) => {
+      const size = Number(order.size)
+      const price = Number(order.price)
+      if (!Number.isFinite(size) || !Number.isFinite(price)) {
+        return sum
+      }
+      return sum + size * price
+    }, 0)
+
+    const availableUsd = Number(hyperliquidWalletAvailableUsd)
+    if (Number.isFinite(availableUsd) && totalNotionalUsd > availableUsd + 0.01) {
+      const formattedTotal = `${formatNumericString(totalNotionalUsd, {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      const formattedAvailable = `${formatNumericString(availableUsd, {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      setOrderStatus({
+        state: 'error',
+        message:
+          context.overBudgetMessage ||
+          `Montant cumulé (${formattedTotal}) supérieur au disponible Hyperliquid (${formattedAvailable}). Réduis la taille ou attends de libérer du capital.`,
+        payload: null
+      })
+      return { ok: false }
+    }
+
+    setOrderStatus({
+      state: 'loading',
+      message: context.loadingMessage || 'Envoi des ordres Hyperliquid…',
+      payload: null
+    })
+
+    try {
+      const response = await placeHyperliquidTestOrder({ orders: sanitizedOrders })
+      setOrderStatus({
+        state: 'success',
+        message: context.successMessage || `${sanitizedOrders.length} ordre(s) envoyés ✅`,
+        payload: response
+      })
+      notifyOrdersAwaitingFill(response, sanitizedOrders)
+      return { ok: true, response }
+    } catch (error) {
+      const rawMessage = error?.message || 'Erreur inconnue lors de l’envoi vers Hyperliquid'
+      const normalized = rawMessage.toLowerCase()
+      const needsPerpHint = normalized.includes('insufficient margin')
+      const friendlyMessage = needsPerpHint
+        ? `${rawMessage} • Hyperliquid vérifie uniquement le solde "Withdrawable" du compte perp. Déplace des USDC depuis Spot ou réduis le budget engagé.`
+        : rawMessage
+      setOrderStatus({ state: 'error', message: friendlyMessage, payload: null })
+      return { ok: false, error }
+    }
+  }, [hyperliquidWalletAvailableUsd, notifyOrdersAwaitingFill])
+
   const sendTestOrder = async () => {
     if (!hasOrderableTokens) {
       setOrderStatus({
@@ -1478,53 +1814,47 @@ export default function Page2() {
       })
       .filter((order) => order.symbol && order.size && order.price)
 
-    if (sanitizedOrders.length === 0) {
+    await submitHyperliquidOrders(sanitizedOrders)
+  }
+
+  const handlePortfolioAutoOrder = async () => {
+    const { plannedOrders, breakdown, issues } = buildPortfolioOrders()
+
+    if (issues.length) {
       setOrderStatus({
         state: 'error',
-        message: 'Ajoute au moins un ordre valide (token, taille, prix)',
+        message: issues.join(' • '),
         payload: null
       })
       return
     }
 
-    const totalNotionalUsd = sanitizedOrders.reduce((sum, order) => {
-      const size = Number(order.size)
-      const price = Number(order.price)
-      if (!Number.isFinite(size) || !Number.isFinite(price)) {
-        return sum
-      }
-      return sum + size * price
-    }, 0)
-    const availableUsd = Number(hyperliquidWalletAvailableUsd)
-    if (Number.isFinite(availableUsd) && totalNotionalUsd > availableUsd + 0.01) {
-      const formattedTotal = `${formatNumericString(totalNotionalUsd, {
-        maximumFractionDigits: 2,
-        limitHighValues: true
-      })} USDC`
-      const formattedAvailable = `${formatNumericString(availableUsd, {
-        maximumFractionDigits: 2,
-        limitHighValues: true
-      })} USDC`
+    if (!plannedOrders.length) {
       setOrderStatus({
         state: 'error',
-        message: `Montant cumulé (${formattedTotal}) supérieur au disponible Hyperliquid (${formattedAvailable}). Réduis la taille ou attends de libérer du capital.`,
+        message: 'Impossible de générer des ordres à partir de la répartition actuelle.',
         payload: null
       })
       return
     }
 
-    setOrderStatus({ state: 'loading', message: 'Envoi des ordres Hyperliquid…', payload: null })
-    try {
-      const response = await placeHyperliquidTestOrder({ orders: sanitizedOrders })
-      setOrderStatus({
-        state: 'success',
-        message: `${sanitizedOrders.length} ordre(s) envoyés ✅`,
-        payload: response
-      })
-      notifyOrdersAwaitingFill(response, sanitizedOrders)
-    } catch (error) {
-      setOrderStatus({ state: 'error', message: error.message, payload: null })
-    }
+    const breakdownSummary = breakdown.length
+      ? breakdown
+          .map((entry) => {
+            const pct = (entry.weight * 100).toFixed(1)
+            const notionalDisplay = formatNumericString(entry.notionalUsd, {
+              maximumFractionDigits: 2,
+              limitHighValues: true
+            })
+            return `${entry.symbol} ${pct}% (${notionalDisplay} USDC)`
+          })
+          .join(' • ')
+      : `${plannedOrders.length} ordre(s)`
+
+    await submitHyperliquidOrders(plannedOrders, {
+      loadingMessage: 'Préparation du panier via la répartition…',
+      successMessage: `Panier envoyé ✅ ${breakdownSummary}`
+    })
   }
 
   const loadOpenOrders = async () => {
@@ -2007,12 +2337,15 @@ export default function Page2() {
     }
 
     const maTirelireValue = (() => {
-      const available = normalize(hyperliquidSummary?.globalAvailable)
-      if (available != null) {
-        return available
+      const withdrawable = normalize(hyperliquidSummary?.perpWithdrawable)
+      if (withdrawable != null) {
+        return withdrawable
       }
-      const total = normalize(hyperliquidSummary?.globalTotal)
-      return total ?? 0
+      const perpValue = normalize(hyperliquidSummary?.perpAccountValue)
+      if (perpValue != null) {
+        return perpValue
+      }
+      return 0
     })()
 
     const statusLabel = showConnectCallout
@@ -2043,9 +2376,9 @@ export default function Page2() {
         <header className="kitchen-wallet-head">
           <div>
             <p className="kitchen-eyebrow">Portefeuille Hyperliquid</p>
-            <h2>Ma tirelire</h2>
+            <h2>Ma tirelire perp</h2>
             <p className="kitchen-wallet-subtitle">
-              Agrégé depuis clearinghouseState + spotClearinghouseState toutes les 25&nbsp;s.
+              Solde retirable du compte perp rafraîchi toutes les 25&nbsp;s.
             </p>
           </div>
           <div className="kitchen-wallet-actions">
@@ -2058,28 +2391,15 @@ export default function Page2() {
         {showConnectCallout ? (
           <div className="kitchen-wallet-alert">
             Connecte ton wallet Hyperliquid pour synchroniser automatiquement ta tirelire.
-            Tu verras ici ton capital disponible et les repères Spot / Perp.
+            Cette carte affiche uniquement ton capital perp retirable.
           </div>
         ) : (
           hasMetrics && (
             <>
               <div className="kitchen-wallet-balance">
-                <span>Ma tirelire</span>
+                <span>Solde withdrawable</span>
                 <p className="kitchen-wallet-amount">{formatUsdc(maTirelireValue, 2)}</p>
-                <p className="kitchen-wallet-footnote">Disponible immédiatement sur Hyperliquid</p>
-              </div>
-
-              <div className="kitchen-wallet-breakdown">
-                <div className="kitchen-breakdown-card">
-                  <p>Spot</p>
-                  <strong>{formatUsdc(hyperliquidSummary?.spotAvailable ?? 0, 2)}</strong>
-                  <small>Total : {formatUsdc(hyperliquidSummary?.spotTotal ?? 0, 2)}</small>
-                </div>
-                <div className="kitchen-breakdown-card">
-                  <p>Perp</p>
-                  <strong>{formatUsdc(hyperliquidSummary?.perpAccountValue ?? 0, 2)}</strong>
-                  <small>Retirable : {formatUsdc(hyperliquidSummary?.perpWithdrawable ?? 0, 2)}</small>
-                </div>
+                <p className="kitchen-wallet-footnote">Disponible immédiatement sur Hyperliquid (perps)</p>
               </div>
 
               {hlError && (
@@ -2094,6 +2414,189 @@ export default function Page2() {
             </>
           )
         )}
+      </section>
+    )
+  }
+
+  const renderBudgetControls = () => {
+    const ratioPercent = Math.round(clampBudgetRatio(walletBudgetRatio) * 100)
+    const walletAvailableNumeric = Number(hyperliquidWalletAvailableUsd)
+    const walletDataReady = Number.isFinite(walletAvailableNumeric)
+    const engagedBudgetValue = Number.isFinite(capitalInitial)
+      ? capitalInitial
+      : resolvedPortfolioBudgetUsd
+    const engagedBudgetLabel = `${formatNumericString(engagedBudgetValue ?? 0, {
+      maximumFractionDigits: 2,
+      limitHighValues: true
+    })} USDC`
+    const walletAvailableLabel = walletDataReady
+      ? `${formatNumericString(walletAvailableNumeric, {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      : 'Indisponible'
+    const engagedFromWallet = walletDataReady
+      ? `${formatNumericString(walletAvailableNumeric * clampBudgetRatio(walletBudgetRatio), {
+        maximumFractionDigits: 2,
+        limitHighValues: true
+      })} USDC`
+      : '—'
+
+    return (
+      <section
+        style={{
+          background: 'linear-gradient(125deg, rgba(9,12,24,0.95), rgba(12,18,34,0.9))',
+          borderRadius: '18px',
+          padding: '24px',
+          marginBottom: '24px',
+          border: '1px solid rgba(59,130,246,0.15)',
+          boxShadow: '0 25px 60px rgba(15,23,42,0.35)'
+        }}
+      >
+        <header style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '18px' }}>
+          <p style={{ margin: 0, color: '#7dd3fc', fontSize: '13px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Pilotage du budget Hyperliquid
+          </p>
+          <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '20px' }}>Choisis la part de capital engagée</h3>
+          <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px', lineHeight: 1.5 }}>
+            Limite automatiquement la taille des achats groupés pour ne jamais vider ton wallet Hyperliquid. Bascule en mode personnalisé si tu veux saisir un montant précis.
+          </p>
+        </header>
+
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
+          {[{
+            id: BUDGET_MODES.WALLET,
+            label: 'Auto (pourcentage du wallet)',
+            helper: 'Ajuste le ratio utilisé sur Hyperliquid'
+          }, {
+            id: BUDGET_MODES.CUSTOM,
+            label: 'Budget personnalisé',
+            helper: 'Définis un montant fixe en USDC'
+          }].map((option) => {
+            const isActive = budgetMode === option.id
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => handleBudgetModeChange(option.id)}
+                style={{
+                  flex: 1,
+                  minWidth: '220px',
+                  borderRadius: '12px',
+                  border: isActive ? '1px solid rgba(16,185,129,0.8)' : '1px solid rgba(148,163,184,0.3)',
+                  background: isActive ? 'rgba(16,185,129,0.08)' : 'rgba(15,23,42,0.5)',
+                  color: isActive ? '#bbf7d0' : '#cbd5f5',
+                  padding: '12px 14px',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}
+              >
+                <span style={{ fontWeight: 600, fontSize: '15px' }}>{option.label}</span>
+                <span style={{ fontSize: '13px', color: '#94a3b8' }}>{option.helper}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        {budgetMode === BUDGET_MODES.WALLET ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <p style={{ margin: 0, color: '#cbd5f5', fontSize: '14px' }}>
+              Utilisation actuelle : <strong style={{ color: '#facc15' }}>{ratioPercent}%</strong> du disponible Hyperliquid perp (solde <em>Withdrawable</em>)
+              {walletDataReady ? ` (${engagedFromWallet})` : ''}. Fais glisser le curseur pour réduire l’impact des achats automatisés.
+            </p>
+            <input
+              type="range"
+              min={Math.round(AUTO_BUDGET_MIN_RATIO * 100)}
+              max={100}
+              step={5}
+              value={ratioPercent}
+              onChange={handleWalletRatioChange}
+              disabled={!walletDataReady}
+              style={{ width: '100%', cursor: walletDataReady ? 'pointer' : 'not-allowed' }}
+            />
+            {!walletDataReady && (
+              <p style={{ margin: 0, color: '#fca5a5', fontSize: '13px' }}>
+                Connecte ton wallet Hyperliquid pour activer le mode automatique.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <label style={{ color: '#cbd5f5', fontSize: '14px', fontWeight: 600 }} htmlFor="manual-budget-input">
+              Budget engagé (USDC)
+            </label>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                border: '1px solid rgba(148,163,184,0.4)',
+                borderRadius: '10px',
+                background: 'rgba(15,23,42,0.6)'
+              }}
+            >
+              <input
+                id="manual-budget-input"
+                type="text"
+                value={manualBudgetInput}
+                onChange={handleManualBudgetInputChange}
+                onFocus={handleManualBudgetInputFocus}
+                onBlur={handleManualBudgetInputBlur}
+                inputMode="decimal"
+                placeholder="1500"
+                style={{
+                  flex: 1,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#f8fafc',
+                  fontSize: '18px',
+                  padding: '12px 14px',
+                  outline: 'none'
+                }}
+              />
+              <span style={{ padding: '0 14px', color: '#94a3b8', fontWeight: 600 }}>USDC</span>
+            </div>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>
+              Les modifications sont sauvegardées automatiquement (500&nbsp;ms) et stockées dans Firebase pour synchroniser tes appareils.
+            </p>
+          </div>
+        )}
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '14px',
+            marginTop: '20px'
+          }}
+        >
+          <div
+            style={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '12px',
+              padding: '14px',
+              background: 'rgba(15,23,42,0.4)'
+            }}
+          >
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Budget engagé</p>
+            <strong style={{ display: 'block', marginTop: '6px', color: '#f8fafc', fontSize: '22px' }}>{engagedBudgetLabel}</strong>
+            <small style={{ color: '#64748b' }}>Utilisé pour la répartition automatique</small>
+          </div>
+          <div
+            style={{
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '12px',
+              padding: '14px',
+              background: 'rgba(15,23,42,0.4)'
+            }}
+          >
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Disponible Hyperliquid</p>
+            <strong style={{ display: 'block', marginTop: '6px', color: '#f8fafc', fontSize: '22px' }}>{walletAvailableLabel}</strong>
+            <small style={{ color: '#64748b' }}>Actualisé toutes les 25&nbsp;s</small>
+          </div>
+        </div>
       </section>
     )
   }
@@ -3194,6 +3697,7 @@ export default function Page2() {
       </div>
 
       {renderHyperliquidAccountSummary()}
+  {renderBudgetControls()}
 
       {/* Contrôle Binance Spot – rendu via renderBinanceSpotControls() en bas de page */}
 
@@ -3223,33 +3727,75 @@ export default function Page2() {
             <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
               Compose jusqu’à 10 ordres limite (token, taille, prix) puis envoie-les vers Hyperliquid en un clic.
             </p>
+            <p style={{ color: '#64748b', marginTop: '6px', fontSize: '13px' }}>
+              Budget réparti :{' '}
+              <strong style={{ color: '#f8fafc' }}>
+                {formatNumericString(resolvedPortfolioBudgetUsd, { maximumFractionDigits: 2, limitHighValues: true })} USDC
+              </strong>
+              {' '}• {orderableSymbols.length} token{orderableSymbols.length > 1 ? 's' : ''} suivis
+            </p>
           </div>
-          <button
-            onClick={sendTestOrder}
-            disabled={orderStatus.state === 'loading' || !hasOrderableTokens}
+          <div
             style={{
-              padding: '12px 20px',
-              borderRadius: '10px',
-              border: 'none',
-              background:
-                orderStatus.state === 'loading'
-                  ? '#475569'
-                  : hasOrderableTokens
-                    ? '#3b82f6'
-                    : '#334155',
-              color: 'white',
-              fontWeight: '600',
-              cursor:
-                orderStatus.state === 'loading' || !hasOrderableTokens ? 'not-allowed' : 'pointer',
-              transition: 'background 0.2s'
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '12px',
+              justifyContent: 'flex-end'
             }}
           >
-            {orderStatus.state === 'loading'
-              ? 'Envoi…'
-              : hasOrderableTokens
-                ? `Placer ${orderForms.length} ordre(s)`
-                : 'Ajoute des tokens avant'}
-          </button>
+            <button
+              onClick={handlePortfolioAutoOrder}
+              disabled={orderStatus.state === 'loading' || !canUsePortfolioAutoOrder}
+              style={{
+                padding: '12px 18px',
+                borderRadius: '10px',
+                border: 'none',
+                background:
+                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder
+                    ? '#1b2636'
+                    : 'linear-gradient(135deg, #22c55e, #16a34a)',
+                color: '#ecfdf5',
+                fontWeight: 600,
+                cursor:
+                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder ? 'not-allowed' : 'pointer',
+                boxShadow:
+                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder
+                    ? 'none'
+                    : '0 8px 24px rgba(34,197,94,0.35)'
+              }}
+              title={canUsePortfolioAutoOrder ? 'Acheter automatiquement selon les pourcentages du portfolio' : 'Ajoute des tokens et un budget suffisant (≥ 15 USDC par token)'}
+            >
+              {orderStatus.state === 'loading'
+                ? 'Préparation…'
+                : 'Acheter via la répartition'}
+            </button>
+            <button
+              onClick={sendTestOrder}
+              disabled={orderStatus.state === 'loading' || !hasOrderableTokens}
+              style={{
+                padding: '12px 20px',
+                borderRadius: '10px',
+                border: 'none',
+                background:
+                  orderStatus.state === 'loading'
+                    ? '#475569'
+                    : hasOrderableTokens
+                      ? '#3b82f6'
+                      : '#334155',
+                color: 'white',
+                fontWeight: '600',
+                cursor:
+                  orderStatus.state === 'loading' || !hasOrderableTokens ? 'not-allowed' : 'pointer',
+                transition: 'background 0.2s'
+              }}
+            >
+              {orderStatus.state === 'loading'
+                ? 'Envoi…'
+                : hasOrderableTokens
+                  ? `Placer ${orderForms.length} ordre(s)`
+                  : 'Ajoute des tokens avant'}
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>

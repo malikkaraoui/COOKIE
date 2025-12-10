@@ -60,7 +60,7 @@ export default function Topbar() {
     counts: exposureCounts,
     error: exposureError,
     refresh: refreshExposure
-  } = useHyperliquidExposure({ pollIntervalMs: 45000 })
+  } = useHyperliquidExposure({ pollIntervalMs: 15000 })
 
   // Détection mobile
   useEffect(() => {
@@ -136,6 +136,26 @@ export default function Topbar() {
       refreshExposure()
     }
   }, [curtainStatus.state, refreshExposure])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return undefined
+    }
+
+    const handleVisibilityRefresh = () => {
+      if (!document.hidden) {
+        refreshExposure()
+      }
+    }
+
+    window.addEventListener('focus', handleVisibilityRefresh)
+    document.addEventListener('visibilitychange', handleVisibilityRefresh)
+
+    return () => {
+      window.removeEventListener('focus', handleVisibilityRefresh)
+      document.removeEventListener('visibilitychange', handleVisibilityRefresh)
+    }
+  }, [refreshExposure])
 
   const curtainLabel = useMemo(() => {
     if (curtainStatus.state === 'loading') {
