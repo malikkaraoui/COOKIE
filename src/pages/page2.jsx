@@ -652,6 +652,10 @@ export default function Page2() {
     return data
   }, [selectedTokens, getToken, tokens])
 
+  const portfolioTokensData = useMemo(() => {
+    return tokensData.filter((token) => token.source !== 'binance')
+  }, [tokensData])
+
   const tokenPriceMap = useMemo(() => {
     return tokensData.reduce((acc, token) => {
       const numericPrice = Number(token.price)
@@ -676,7 +680,7 @@ export default function Page2() {
     setWeight,
     resetWeights,
     results
-  } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
+  } = usePortfolioSimulation(1000, portfolioTokensData, selectedSymbols)
 
   const resolvedPortfolioBudgetUsd = useMemo(() => {
     const numericCapital = Number(capitalInitial)
@@ -4401,7 +4405,7 @@ export default function Page2() {
         </div>
 
         {/* Sliders dynamiques (branchés sur la bonne source par symbole) */}
-        {tokensData.map(token => (
+        {portfolioTokensData.map(token => (
           <TokenWeightRow
             key={token.symbol}
             symbol={token.symbol}
@@ -4452,7 +4456,7 @@ export default function Page2() {
           📊 Visualisation Portfolio
         </h3>
         
-        <PortfolioChart weights={weights} tokensData={tokensData} />
+        <PortfolioChart weights={weights} tokensData={portfolioTokensData} />
       </div>
 
       {/* Tokens sélectionnés (ancien affichage) */}

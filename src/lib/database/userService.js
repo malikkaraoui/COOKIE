@@ -322,11 +322,29 @@ export async function getUserVote(uid, questionId) {
  */
 export async function savePortfolioWeights(uid, weights) {
   if (!uid) throw new Error('UID requis')
-  if (!weights || typeof weights !== 'object') throw new Error('weights doit être un objet')
-  
+
   const weightsRef = ref(db, `users/${uid}/portfolioWeights`)
-  
-  await set(weightsRef, weights)
+
+  // Permettre la suppression totale des poids (null) sans faire planter l'appelant
+  if (weights == null) {
+    await set(weightsRef, null)
+    return
+  }
+
+  if (typeof weights !== 'object' || Array.isArray(weights)) {
+    throw new Error('weights doit être un objet')
+  }
+
+  const sanitized = Object.entries(weights).reduce((acc, [symbol, rawValue]) => {
+    const numericValue = Number(rawValue)
+    if (!Number.isFinite(numericValue)) {
+      return acc
+    }
+    acc[symbol] = numericValue
+    return acc
+  }, {})
+
+  await set(weightsRef, Object.keys(sanitized).length > 0 ? sanitized : null)
 }
 
 /**
