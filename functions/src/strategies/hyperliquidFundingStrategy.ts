@@ -167,7 +167,7 @@ export async function maybeCloseFundingPosition(
 
   const pnlTotalPercent = computeApproxPnlPercent(state, ctx);
   const fundingSignChanged = Math.sign(ctx.fundingRate) !== Math.sign(state.minFundingRate);
-  const shouldExit = pnlTotalPercent <= state.exitPnLPercentTarget || fundingSignChanged;
+  const shouldExit = pnlTotalPercent >= state.exitPnLPercentTarget || fundingSignChanged;
 
   if (!shouldExit) {
     return state;

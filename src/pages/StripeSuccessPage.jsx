@@ -76,10 +76,15 @@ export default function StripeSuccessPage() {
   if (!user) {
     return (
       <div className="stripe-success-page">
-        <div className="stripe-success-warning">
-          <TriangleAlert size={20} />
-          <div>Connexion requise pour vérifier ton paiement.</div>
-          <small>Identifie-toi puis recharge la page pour voir l’état de ta commande.</small>
+        <div className="stripe-success-info">
+          <ShieldCheck size={22} />
+          <div>
+            <div>Validation sécurisée de ton badge Chef…</div>
+            <small>
+              Nous finalisons la confirmation Stripe. Si l’écran reste bloqué, identifie-toi puis reviens ici pour
+              appliquer ton statut premium.
+            </small>
+          </div>
         </div>
       </div>
     )

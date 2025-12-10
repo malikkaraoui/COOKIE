@@ -8,7 +8,6 @@ import { useDropZone } from '../hooks/useDropZone'
 import { isActivePath } from '../lib/pathUtils'
 import { getHoverLabelProps } from '../lib/ui/hoverLabels'
 import ProfileButton from '../auth/ProfileButton'
-import LogoutButton from '../auth/LogoutButton'
 import { ReownLogoutButton } from './auth/ReownLogoutButton'
 import { ShoppingBasket, ChefHat, Soup, Menu, X, CreditCard, Sprout } from 'lucide-react'
 
@@ -127,7 +126,7 @@ export default function Sidebar() {
     },
     // Lien Stripe visible uniquement pour les utilisateurs connectés
     ...(user ? [{
-      to: '/stripe',
+      to: '/epicerie-premium',
       label: 'Acheter Premium',
       icon: CreditCard
     }] : []),
@@ -274,7 +273,6 @@ export default function Sidebar() {
               {user && (
                 <>
                   <ProfileButton isCompact={isCompact} />
-                  <LogoutButton isCompact={isCompact} />
                 </>
               )}
               <ReownLogoutButton isCompact={isCompact} />

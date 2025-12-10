@@ -110,6 +110,7 @@ const BINANCE_MAX_ORDER_FORMS = 10
 const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
 const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
+const FUNDING_WINDOW_OPTIONS = [5, 10, 15, 20]
 
 const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   acc[token.id.toUpperCase()] = token
@@ -3809,18 +3810,43 @@ export default function Page2() {
             <label style={{ color: '#cbd5f5', fontSize: '14px', fontWeight: 600 }}>
               Fenêtre d'analyse
             </label>
-            <input
-              type="range"
-              min="5"
-              max="90"
-              step="5"
-              value={fundingWindowDays}
-              onChange={(e) => setFundingWindowDays(Number(e.target.value))}
-              style={{ flex: 1 }}
-            />
-            <span style={{ color: '#94a3b8', fontSize: '14px', minWidth: '90px' }}>
-              {fundingWindowDays} jours
-            </span>
+            <div
+              style={{
+                display: 'flex',
+                gap: '10px',
+                flexWrap: 'wrap'
+              }}
+            >
+              {FUNDING_WINDOW_OPTIONS.map((days) => {
+                const isActive = fundingWindowDays === days
+                return (
+                  <button
+                    key={`funding-window-${days}`}
+                    type="button"
+                    onClick={() => setFundingWindowDays(days)}
+                    aria-pressed={isActive}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '999px',
+                      border: isActive ? '1px solid #fb923c' : '1px solid #1e293b',
+                      background: isActive
+                        ? 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)'
+                        : '#0f172a',
+                      color: '#f8fafc',
+                      fontWeight: 600,
+                      letterSpacing: '0.02em',
+                      boxShadow: isActive ? '0 8px 18px rgba(249, 115, 22, 0.25)' : 'none',
+                      transition: 'all 0.2s ease',
+                      cursor: 'pointer',
+                      minWidth: '72px',
+                      textAlign: 'center'
+                    }}
+                  >
+                    {days} jours
+                  </button>
+                )
+              })}
+            </div>
           </div>
 
           <div style={{ marginBottom: '16px' }}>

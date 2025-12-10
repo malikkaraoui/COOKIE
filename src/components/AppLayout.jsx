@@ -37,7 +37,7 @@ export default function AppLayout() {
             <Route path="/la-marmite" element={<LaMarmite />} />
             <Route path="/bouillon-de-legumes" element={<BouillonDeLegumes />} />
             <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/stripe" element={<StripePage />} />
+            <Route path="/epicerie-premium" element={<StripePage />} />
             <Route path="/stripe-success" element={<StripeSuccessPage />} />
             <Route path="/stripe-cancel" element={<StripeCancelPage />} />
 
@@ -46,7 +46,8 @@ export default function AppLayout() {
             <Route path="/MaCuisine" element={<Navigate to="/ma-cuisine" replace />} />
             <Route path="/LaMarmite" element={<Navigate to="/la-marmite" replace />} />
             <Route path="/BouillonDeLegumes" element={<Navigate to="/bouillon-de-legumes" replace />} />
-            <Route path="/Stripe" element={<Navigate to="/stripe" replace />} />
+            <Route path="/Stripe" element={<Navigate to="/epicerie-premium" replace />} />
+            <Route path="/EpiceriePremium" element={<Navigate to="/epicerie-premium" replace />} />
             <Route path="/StripeSuccess" element={<Navigate to="/stripe-success" replace />} />
             <Route path="/StripeCancel" element={<Navigate to="/stripe-cancel" replace />} />
             <Route path="/Profile" element={<Navigate to="/profile" replace />} />

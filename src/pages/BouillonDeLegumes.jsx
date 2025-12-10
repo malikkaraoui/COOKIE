@@ -502,7 +502,7 @@ export default function BouillonDeLegumes() {
         )}
         {user && !isPremium && !profileLoading && (
           <div className="bouillon-alert bouillon-alert--info">
-            Cette fonctionnalité nécessite COOKIE Premium. <Link to="/stripe">Activer mon abonnement</Link>
+            Cette fonctionnalité nécessite COOKIE Premium. <Link to="/epicerie-premium">Activer mon abonnement</Link>
           </div>
         )}
       </section>
