@@ -18,12 +18,9 @@ import { useMarketData } from '../providers/MarketDataProvider'
 import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
 import { BINANCE_DEFAULT_TOKENS } from '../config/binanceTrackedTokens.js'
-import TokenFundingCard from '../components/TokenFundingCard'
-import FundingMultiChart from '../components/FundingMultiChart'
 import {
   placeHyperliquidTestOrder,
-  fetchHyperliquidOpenOrders,
-  closeAllHyperliquidPositions
+  fetchHyperliquidOpenOrders
 } from '../lib/hyperliquidOrders'
 import {
   placeBinanceOrder,
@@ -39,7 +36,7 @@ import {
   saveInitialCapital,
   subscribeInitialCapital
 } from '../lib/database/userService'
-import { clearActiveFundingSignal } from '../lib/database/xpService'
+import './MaCuisine.css'
 
 // Composant interne pour bouton de suppression (adapté mobile)
 function DeleteButton({ symbol, onRemove, isMobile }) {
@@ -110,7 +107,6 @@ const BINANCE_MAX_ORDER_FORMS = 10
 const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
 const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
-const FUNDING_WINDOW_OPTIONS = [5, 10, 15, 20]
 
 const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   acc[token.id.toUpperCase()] = token
@@ -403,10 +399,8 @@ const formatWithStepPrecision = (value, step) => {
 
 export default function Page2() {
   const [isMobile, setIsMobile] = useState(false)
-  const [fundingWindowDays, setFundingWindowDays] = useState(20)
   const [orderStatus, setOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [openOrdersStatus, setOpenOrdersStatus] = useState({ state: 'idle', message: '', payload: null })
-  const [closeAllStatus, setCloseAllStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceOrderStatus, setBinanceOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceLargeOrderStatus, setBinanceLargeOrderStatus] = useState({ state: 'idle', message: '', payload: null })
   const [binanceFetchStatus, setBinanceFetchStatus] = useState({ state: 'idle', message: '', payload: null })
@@ -439,7 +433,6 @@ export default function Page2() {
     notifyOrderInOrderBook
   } = useTradeNotifications()
 
-  const hyperliquidAccount = useHyperliquidAccount({ pollIntervalMs: 25000 })
   const {
     status: hlStatus,
     error: hlError,
@@ -447,9 +440,8 @@ export default function Page2() {
     totals: hlTotals,
     spot: hlSpot,
     perp: hlPerp,
-    hasWallet: hlHasWallet,
-    refetch: refetchHyperliquidAccount
-  } = hyperliquidAccount
+    hasWallet: hlHasWallet
+  } = useHyperliquidAccount({ pollIntervalMs: 25000 })
 
   const hyperliquidSummary = useMemo(() => {
     const spot = hlSpot || { totalUsd: 0, availableUsd: 0, holdUsd: 0 }
@@ -508,21 +500,6 @@ export default function Page2() {
   const orderableSymbols = selectedSymbols
   const hasOrderableTokens = orderableSymbols.length > 0
 
-  const fundingPairs = useMemo(() => {
-    const entries = []
-    const seen = new Set()
-    orderableSymbols.forEach((symbol) => {
-      const pairSymbol = getBinancePairSymbol(symbol)
-      if (!pairSymbol || seen.has(pairSymbol)) {
-        return
-      }
-      seen.add(pairSymbol)
-      entries.push({ baseSymbol: symbol, pairSymbol })
-    })
-    return entries
-  }, [orderableSymbols])
-
-  const fundingDisplayPairs = useMemo(() => fundingPairs.slice(0, 4), [fundingPairs])
 
   const binanceSelectedEntries = useMemo(() => {
     return selectedTokens.filter((entry) => entry?.toLowerCase().includes(':binance'))
@@ -755,16 +732,6 @@ export default function Page2() {
     results
   } = usePortfolioSimulation(1000, tokensData, selectedSymbols)
 
-  const fundingWeightsMap = useMemo(() => {
-    const map = {}
-    fundingDisplayPairs.forEach((entry) => {
-      const key = entry.baseSymbol?.toUpperCase()
-      if (key) {
-        map[key] = weights[key] ?? 0
-      }
-    })
-    return map
-  }, [fundingDisplayPairs, weights])
 
   const lastSyncedCapitalRef = useRef(null)
   const priceNudgeIntervalRef = useRef(null)
@@ -873,6 +840,7 @@ export default function Page2() {
           return {
             ...order,
             symbol: canonical,
+            side: 'buy',
             price: autoPrice,
             pricePrecision: derivePricePrecision(autoPrice),
             autoPrice: true,
@@ -935,6 +903,7 @@ export default function Page2() {
           return {
             ...order,
             symbol: canonical,
+            side: 'buy',
             price: autoPrice,
             pricePrecision: derivePricePrecision(autoPrice),
             autoPrice: true,
@@ -989,6 +958,7 @@ export default function Page2() {
         {
           ...createBlankOrder(fallbackSymbol),
           symbol: fallbackSymbol,
+          side: 'buy',
           price: autoPrice,
           pricePrecision: derivePricePrecision(autoPrice),
           size: autoSize,
@@ -1015,6 +985,7 @@ export default function Page2() {
         {
           ...createBlankBinanceOrder(fallbackSymbol),
           symbol: fallbackSymbol,
+          side: 'buy',
           price: autoPrice,
           pricePrecision: derivePricePrecision(autoPrice),
           size: autoSize,
@@ -1400,6 +1371,8 @@ export default function Page2() {
         : []
 
     const timestamp = Date.now()
+    const pendingPayloads = []
+
     orders.forEach((order, index) => {
       const status = statuses[index]
       const id = extractOrderIdFromStatus(status, index) || `${order.symbol}-${timestamp}-${index}`
@@ -1411,13 +1384,35 @@ export default function Page2() {
       const payload = {
         id,
         symbol: order.symbol,
-        side: order.side === 'sell' ? 'sell' : 'buy'
+        side: 'buy'
       }
       if (normalizedStatus === 'filled' || normalizedStatus === 'done' || normalizedStatus === 'complete') {
         notifyOrderExecuted(payload)
       } else {
-        notifyOrderInOrderBook(payload)
+        pendingPayloads.push(payload)
       }
+    })
+
+    if (pendingPayloads.length === 0) {
+      return
+    }
+
+    const uniqueSymbols = Array.from(
+      new Set(pendingPayloads.map((entry) => (entry.symbol || '').trim()).filter(Boolean))
+    )
+    const readableList = uniqueSymbols.length > 0 ? uniqueSymbols.join(' + ') : 'Tes achats'
+    const summaryText = uniqueSymbols.length
+      ? uniqueSymbols.length === 1
+        ? `Tu viens d'envoyer un achat ${uniqueSymbols[0]} au carnet Hyperliquid.`
+        : `Tu viens d'envoyer ${uniqueSymbols.length} achats : ${readableList}.`
+      : "Tu viens d'envoyer de nouveaux achats sur Hyperliquid."
+
+    notifyOrderInOrderBook({
+      id: `batch-${timestamp}`,
+      symbol: readableList,
+      side: 'buy',
+      summaryText: `${summaryText} On te préviendra dès exécution.`,
+      symbols: uniqueSymbols
     })
   }
 
@@ -1454,27 +1449,6 @@ export default function Page2() {
     })
   }
 
-  const notifyHyperliquidClosures = (result) => {
-    const statuses = Array.isArray(result?.statuses)
-      ? result.statuses
-      : Array.isArray(result?.data?.statuses)
-        ? result.data.statuses
-        : []
-    if (!statuses.length) {
-      return
-    }
-    const timestamp = Date.now()
-    statuses.forEach((status, index) => {
-      const id = extractOrderIdFromStatus(status, index) || `hl-close-${timestamp}-${index}`
-      const symbol = typeof status?.coin === 'string' ? status.coin : 'Hyperliquid'
-      let side
-      if (typeof status?.side === 'string') {
-        side = status.side.toLowerCase() === 'sell' ? 'sell' : 'buy'
-      }
-      notifyOrderClosedByWatcher({ id, symbol, side })
-    })
-  }
-
   const sendTestOrder = async () => {
     if (!hasOrderableTokens) {
       setOrderStatus({
@@ -1497,7 +1471,7 @@ export default function Page2() {
           : quantizePrice(canonicalSymbol, order.price)
         return {
           symbol: canonicalSymbol ? canonicalSymbol.trim().toUpperCase() : '',
-          side: order.side,
+          side: 'buy',
           size: effectiveSize,
           price: effectivePrice
         }
@@ -1576,35 +1550,6 @@ export default function Page2() {
       })
     } catch (error) {
       setOpenOrdersStatus({ state: 'error', message: error.message, payload: null })
-    }
-  }
-
-  const closeAllHyperliquid = async () => {
-    setCloseAllStatus({ state: 'loading', message: 'Fermeture des positions Hyperliquid…', payload: null })
-    try {
-      const response = await closeAllHyperliquidPositions()
-      const canceled = response.canceledOrders ?? 0
-      const closed = response.closeOrdersPlaced ?? 0
-      setCloseAllStatus({
-        state: 'success',
-        message: `Annulations: ${canceled}, ordres de fermeture envoyés: ${closed}`,
-        payload: response
-      })
-
-      notifyHyperliquidClosures(response?.closeResult)
-      notifyHyperliquidClosures(response?.cancelResult)
-
-      if (user?.uid) {
-        clearActiveFundingSignal(user.uid).catch((error) => {
-          console.warn('Impossible de désactiver le signal XP du bouillon:', error)
-        })
-      }
-    } catch (error) {
-      const rawMessage = error?.message || 'Erreur inconnue côté Cloud Function'
-      const friendlyMessage = /post-only/i.test(rawMessage)
-        ? 'Hyperliquid vient d’appliquer un redémarrage réseau: seuls les ordres post-only sont autorisés pendant ~60s. Patiente un court instant puis relance la fermeture.'
-        : rawMessage
-      setCloseAllStatus({ state: 'error', message: friendlyMessage, payload: null })
     }
   }
 
@@ -1861,7 +1806,7 @@ export default function Page2() {
         return {
           payload: {
             symbol: pairSymbol,
-            side: order.side === 'sell' ? 'SELL' : 'BUY',
+            side: 'BUY',
             type: 'LIMIT',
             timeInForce: (order.timeInForce || BINANCE_DEFAULT_TIME_IN_FORCE).toUpperCase(),
             quantity: canonicalQuantity,
@@ -1874,7 +1819,7 @@ export default function Page2() {
             notional,
             quantity: canonicalQuantity,
             price: canonicalPrice,
-            side: order.side,
+            side: 'buy',
             constraints: constraints || null
           }
         }
@@ -1942,7 +1887,6 @@ export default function Page2() {
 
   const orderStatusColor = statusColorMap[orderStatus.state]
   const openOrdersStatusColor = statusColorMap[openOrdersStatus.state]
-  const closeAllStatusColor = statusColorMap[closeAllStatus.state]
   const binanceOrderStatusColor = statusColorMap[binanceOrderStatus.state]
   const binanceLargeOrderStatusColor = statusColorMap[binanceLargeOrderStatus.state]
   const binanceFetchStatusColor = statusColorMap[binanceFetchStatus.state]
@@ -2056,6 +2000,21 @@ export default function Page2() {
       })} USDC`
     }
 
+    const normalize = (value) => {
+      if (value == null) return null
+      const numeric = typeof value === 'string' ? Number(value) : value
+      return Number.isFinite(numeric) ? numeric : null
+    }
+
+    const maTirelireValue = (() => {
+      const available = normalize(hyperliquidSummary?.globalAvailable)
+      if (available != null) {
+        return available
+      }
+      const total = normalize(hyperliquidSummary?.globalTotal)
+      return total ?? 0
+    })()
+
     const statusLabel = showConnectCallout
       ? 'Wallet requis'
       : isRefreshing
@@ -2073,182 +2032,69 @@ export default function Page2() {
       return '#34d399'
     })()
 
+    const statusStyle = {
+      color: statusColor,
+      borderColor: `${statusColor}55`,
+      backgroundColor: `${statusColor}0f`
+    }
+
     return (
-      <div
-        style={{
-          background: 'linear-gradient(125deg, #040814 0%, #02040a 35%, #0b1627 100%)',
-          borderRadius: '18px',
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid rgba(148, 163, 184, 0.1)',
-          boxShadow: '0 25px 60px rgba(3, 7, 18, 0.65)'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '16px',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            marginBottom: '20px'
-          }}
-        >
-          <div style={{ flex: 1, minWidth: '220px' }}>
-            <p style={{ color: '#e2e8f0', margin: 0, fontSize: '20px', fontWeight: 700 }}>
-              Compte Hyperliquid
-            </p>
-            <p style={{ color: '#94a3b8', marginTop: '6px', marginBottom: 0, lineHeight: 1.4 }}>
-              Agrégation en temps réel des endpoints <code style={{ fontSize: '13px', color: '#cbd5f5' }}>clearinghouseState</code>
-              {' '}et <code style={{ fontSize: '13px', color: '#cbd5f5' }}>spotClearinghouseState</code> (API officielle Hyperliquid).
-              Toutes les valeurs sont exprimées en USDC.
+      <section className="kitchen-wallet-card">
+        <header className="kitchen-wallet-head">
+          <div>
+            <p className="kitchen-eyebrow">Portefeuille Hyperliquid</p>
+            <h2>Ma tirelire</h2>
+            <p className="kitchen-wallet-subtitle">
+              Agrégé depuis clearinghouseState + spotClearinghouseState toutes les 25&nbsp;s.
             </p>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center'
-            }}
-          >
-            <div
-              style={{
-                padding: '6px 14px',
-                borderRadius: '999px',
-                border: `1px solid ${statusColor}33`,
-                color: statusColor,
-                fontWeight: 600,
-                fontSize: '13px'
-              }}
-            >
+          <div className="kitchen-wallet-actions">
+            <span className="kitchen-status-pill" style={statusStyle}>
               {statusLabel}
-            </div>
-            <button
-              onClick={refetchHyperliquidAccount}
-              disabled={isLoading || showConnectCallout}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '12px',
-                border: '1px solid #1f2d3f',
-                background: isLoading || showConnectCallout ? '#1f2937' : '#2563eb',
-                color: '#f8fafc',
-                cursor: isLoading || showConnectCallout ? 'not-allowed' : 'pointer',
-                fontWeight: 600,
-                minWidth: '120px'
-              }}
-            >
-              {isLoading ? 'Connexion…' : 'Rafraîchir'}
-            </button>
+            </span>
           </div>
-        </div>
+        </header>
 
         {showConnectCallout ? (
-          <div
-            style={{
-              border: '1px dashed #1e2b3f',
-              borderRadius: '14px',
-              padding: '18px',
-              background: 'rgba(15, 23, 42, 0.35)',
-              color: '#cbd5f5',
-              fontSize: '15px'
-            }}
-          >
-            Connecte ton wallet Reown / Hyperliquid pour synchroniser automatiquement ton compte testnet.
-            Une fois connecté, cette carte affichera ton solde spot, ton compte perps et le montant réellement retirable.
+          <div className="kitchen-wallet-alert">
+            Connecte ton wallet Hyperliquid pour synchroniser automatiquement ta tirelire.
+            Tu verras ici ton capital disponible et les repères Spot / Perp.
           </div>
         ) : (
-          <>
-            {hasMetrics && (
-              <>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                    gap: '14px',
-                    marginBottom: '16px'
-                  }}
-                >
-                  {[{
-                    label: 'Valeur totale',
-                    value: formatUsdc(hyperliquidSummary?.globalTotal ?? 0, 2)
-                  }, {
-                    label: 'Montant disponible',
-                    value: formatUsdc(hyperliquidSummary?.globalAvailable ?? 0, 2)
-                  }].map((metric) => (
-                    <div
-                      key={metric.label}
-                      style={{
-                        borderRadius: '16px',
-                        border: '1px solid #192338',
-                        background: 'rgba(11, 20, 38, 0.8)',
-                        padding: '18px'
-                      }}
-                    >
-                      <p style={{ color: '#94a3b8', margin: 0, fontSize: '13px', letterSpacing: '0.08em' }}>
-                        {metric.label}
-                      </p>
-                      <p style={{ color: '#f8fafc', margin: '6px 0 0', fontSize: '26px', fontWeight: 700 }}>
-                        {metric.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                    gap: '14px'
-                  }}
-                >
-                  {[{
-                    title: 'Spot (non engagé)',
-                    main: formatUsdc(hyperliquidSummary?.spotAvailable ?? 0, 2),
-                    sub: `Total : ${formatUsdc(hyperliquidSummary?.spotTotal ?? 0, 2)}`
-                  }, {
-                    title: 'Perp (compte marge)',
-                    main: formatUsdc(hyperliquidSummary?.perpAccountValue ?? 0, 2),
-                    sub: `Retirable : ${formatUsdc(hyperliquidSummary?.perpWithdrawable ?? 0, 2)}`
-                  }].map((card) => (
-                    <div
-                      key={card.title}
-                      style={{
-                        borderRadius: '16px',
-                        border: '1px solid #1e2d44',
-                        background: 'rgba(7, 12, 22, 0.9)',
-                        padding: '16px'
-                      }}
-                    >
-                      <p style={{ color: '#cbd5f5', margin: 0, fontSize: '15px', fontWeight: 600 }}>{card.title}</p>
-                      <p style={{ color: '#f1f5f9', margin: '6px 0 0', fontSize: '20px', fontWeight: 700 }}>{card.main}</p>
-                      <p style={{ color: '#64748b', margin: '2px 0 0', fontSize: '13px' }}>{card.sub}</p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {hlError && (
-              <div
-                style={{
-                  marginTop: '16px',
-                  border: '1px solid rgba(248, 113, 113, 0.3)',
-                  borderRadius: '12px',
-                  padding: '12px',
-                  color: '#fecaca',
-                  background: 'rgba(185, 28, 28, 0.15)'
-                }}
-              >
-                {hlError}
+          hasMetrics && (
+            <>
+              <div className="kitchen-wallet-balance">
+                <span>Ma tirelire</span>
+                <p className="kitchen-wallet-amount">{formatUsdc(maTirelireValue, 2)}</p>
+                <p className="kitchen-wallet-footnote">Disponible immédiatement sur Hyperliquid</p>
               </div>
-            )}
 
-            <p style={{ color: '#475569', marginTop: '14px', fontSize: '12px' }}>
-              Dernière synchro : {hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'} • Poll 25s côté client
-            </p>
-          </>
+              <div className="kitchen-wallet-breakdown">
+                <div className="kitchen-breakdown-card">
+                  <p>Spot</p>
+                  <strong>{formatUsdc(hyperliquidSummary?.spotAvailable ?? 0, 2)}</strong>
+                  <small>Total : {formatUsdc(hyperliquidSummary?.spotTotal ?? 0, 2)}</small>
+                </div>
+                <div className="kitchen-breakdown-card">
+                  <p>Perp</p>
+                  <strong>{formatUsdc(hyperliquidSummary?.perpAccountValue ?? 0, 2)}</strong>
+                  <small>Retirable : {formatUsdc(hyperliquidSummary?.perpWithdrawable ?? 0, 2)}</small>
+                </div>
+              </div>
+
+              {hlError && (
+                <div className="kitchen-wallet-alert kitchen-wallet-alert--error">
+                  {hlError}
+                </div>
+              )}
+
+              <p className="kitchen-wallet-note">
+                Dernière synchro : {hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'} • Poll 25s côté client
+              </p>
+            </>
+          )
         )}
-      </div>
+      </section>
     )
   }
 
@@ -2459,7 +2305,7 @@ export default function Page2() {
                 Tokens actifs ({binanceOrderForms.length})
               </h3>
               <p style={{ color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.5 }}>
-                Sélectionne tes tokens <strong>:binance</strong> dans Ma Cuisine, ajuste taille, prix limite et côté
+                Sélectionne tes tokens <strong>:binance</strong> dans Ma Cuisine, ajuste taille et prix limite (achat uniquement)
                 puis expédie jusqu’à 10 ordres limit GTC d’un seul clic. Les prix live viennent du flux Firebase et le notional est recalculé en USDT.
               </p>
               {!hasBinanceOrderableTokens && (
@@ -2607,23 +2453,35 @@ export default function Page2() {
                     </div>
 
                     <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Côté</label>
-                      <select
-                        value={order.side}
-                        onChange={(e) => updateBinanceOrderField(index, 'side', e.target.value)}
+                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Mode</label>
+                      <div
                         style={{
-                          width: '100%',
-                          marginTop: '4px',
+                          marginTop: '6px',
                           borderRadius: '10px',
-                          padding: '10px',
-                          background: '#071126',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b'
+                          padding: '12px',
+                          background: '#041226',
+                          border: '1px solid #0f1f35',
+                          color: '#e0f2fe',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
                         }}
                       >
-                        <option value="buy">Achat (BUY)</option>
-                        <option value="sell">Vente (SELL)</option>
-                      </select>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '999px',
+                            background: '#22c55e'
+                          }}
+                        ></span>
+                        Spot Binance • Achat uniquement
+                      </div>
+                      <small style={{ color: '#475569' }}>Le bouton Vendre est désactivé sur Ma Cuisine.</small>
                     </div>
 
                     <div>
@@ -3325,21 +3183,14 @@ export default function Page2() {
   )
 
   return (
-    <div style={{ padding: '32px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="kitchen-page">
       {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ 
-          color: '#e5e7eb', 
-          fontSize: '32px', 
-          fontWeight: 'bold',
-          margin: 0,
-          marginBottom: '8px'
-        }}>
-          Ma Cuisine 👨🏼‍🍳
+      <div className="kitchen-hero">
+        <p className="kitchen-eyebrow">Studio multi-exchange</p>
+        <h1>
+          Ma Cuisine <span role="img" aria-label="chef">👨🏼‍🍳</span>
         </h1>
-        <p style={{ color: '#94a3b8', fontSize: '16px', margin: 0 }}>
-          Simulateur de portfolio • Optimisez vos allocations
-        </p>
+        <p>Simulateur de portfolio • Optimisez vos allocations</p>
       </div>
 
       {renderHyperliquidAccountSummary()}
@@ -3370,7 +3221,7 @@ export default function Page2() {
               🧪 Envoyer des ordres Hyperliquid
             </h3>
             <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Compose jusqu’à 10 ordres limite (token, côté, taille, prix) puis envoie-les vers Hyperliquid en un clic.
+              Compose jusqu’à 10 ordres limite (token, taille, prix) puis envoie-les vers Hyperliquid en un clic.
             </p>
           </div>
           <button
@@ -3501,23 +3352,35 @@ export default function Page2() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Côté</label>
-                    <select
-                      value={order.side}
-                      onChange={(e) => updateOrderField(index, 'side', e.target.value)}
+                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Mode</label>
+                    <div
                       style={{
-                        width: '100%',
-                        marginTop: '4px',
+                        marginTop: '6px',
                         borderRadius: '10px',
-                        padding: '10px',
-                        background: '#0f172a',
-                        color: '#e5e7eb',
-                        border: '1px solid #1e293b'
+                        padding: '12px',
+                        background: '#052332',
+                        border: '1px solid #113448',
+                        color: '#e0f2fe',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px'
                       }}
                     >
-                      <option value="buy">Achat (Long)</option>
-                      <option value="sell">Vente (Short)</option>
-                    </select>
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          width: '8px',
+                          height: '8px',
+                          borderRadius: '999px',
+                          background: '#22c55e'
+                        }}
+                      ></span>
+                      Spot uniquement • Achat
+                    </div>
+                    <small style={{ color: '#475569' }}>La vente de spot est désactivée dans Ma Cuisine.</small>
                   </div>
                   <div>
                     <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille</label>
@@ -3771,112 +3634,6 @@ export default function Page2() {
         )}
       </div>
 
-      {fundingDisplayPairs.length > 0 && (
-        <div
-          style={{
-            background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
-            borderRadius: '16px',
-            padding: '24px',
-            marginBottom: '24px',
-            border: '1px solid #1e293b'
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-              gap: '12px',
-              marginBottom: '16px'
-            }}
-          >
-            <div>
-              <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-                📈 Funding rates temps réel
-              </h3>
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              flexWrap: 'wrap',
-              marginBottom: '12px'
-            }}
-          >
-            <label style={{ color: '#cbd5f5', fontSize: '14px', fontWeight: 600 }}>
-              Fenêtre d'analyse
-            </label>
-            <div
-              style={{
-                display: 'flex',
-                gap: '10px',
-                flexWrap: 'wrap'
-              }}
-            >
-              {FUNDING_WINDOW_OPTIONS.map((days) => {
-                const isActive = fundingWindowDays === days
-                return (
-                  <button
-                    key={`funding-window-${days}`}
-                    type="button"
-                    onClick={() => setFundingWindowDays(days)}
-                    aria-pressed={isActive}
-                    style={{
-                      padding: '8px 16px',
-                      borderRadius: '999px',
-                      border: isActive ? '1px solid #fb923c' : '1px solid #1e293b',
-                      background: isActive
-                        ? 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)'
-                        : '#0f172a',
-                      color: '#f8fafc',
-                      fontWeight: 600,
-                      letterSpacing: '0.02em',
-                      boxShadow: isActive ? '0 8px 18px rgba(249, 115, 22, 0.25)' : 'none',
-                      transition: 'all 0.2s ease',
-                      cursor: 'pointer',
-                      minWidth: '72px',
-                      textAlign: 'center'
-                    }}
-                  >
-                    {days} jours
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '16px' }}>
-            <FundingMultiChart
-              pairs={fundingDisplayPairs}
-              days={20}
-              visibleDays={fundingWindowDays}
-              weightsMap={fundingWeightsMap}
-            />
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-              gap: '16px'
-            }}
-          >
-            {fundingDisplayPairs.map((item) => (
-              <TokenFundingCard
-                key={item.pairSymbol}
-                baseSymbol={item.baseSymbol}
-                pairSymbol={item.pairSymbol}
-                days={20}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Liste des ordres ouverts Hyperliquid */}
       <div
         style={{
@@ -4052,75 +3809,6 @@ export default function Page2() {
                   )}
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Fermer toutes les positions Hyperliquid */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid #1e293b'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap'
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-              🔒 Fermer toutes les positions
-            </h3>
-            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Annule les ordres encore au carnet et envoie des ordres IOC inverses pour neutraliser la position.
-            </p>
-          </div>
-          <button
-            onClick={closeAllHyperliquid}
-            disabled={closeAllStatus.state === 'loading'}
-            style={{
-              padding: '12px 20px',
-              borderRadius: '10px',
-              border: 'none',
-              background: closeAllStatus.state === 'loading' ? '#475569' : '#f97316',
-              color: 'white',
-              fontWeight: '600',
-              cursor: closeAllStatus.state === 'loading' ? 'not-allowed' : 'pointer',
-              transition: 'background 0.2s'
-            }}
-          >
-            {closeAllStatus.state === 'loading' ? 'Fermeture…' : 'Fermer toutes les positions'}
-          </button>
-        </div>
-
-        {closeAllStatus.state !== 'idle' && (
-          <div style={{ marginTop: '16px' }}>
-            <p style={{ color: closeAllStatusColor, fontSize: '14px', marginBottom: '8px' }}>
-              {closeAllStatus.message}
-            </p>
-            {closeAllStatus.payload && (
-              <pre
-                style={{
-                  background: '#020617',
-                  color: '#e2e8f0',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  overflowX: 'auto',
-                  border: '1px solid #1e293b',
-                  fontSize: '12px'
-                }}
-              >
-                {JSON.stringify(closeAllStatus.payload, null, 2)}
-              </pre>
             )}
           </div>
         )}

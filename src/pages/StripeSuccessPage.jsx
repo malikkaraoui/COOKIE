@@ -13,14 +13,19 @@ export default function StripeSuccessPage() {
   const [expired, setExpired] = useState(false)
   const navigate = useNavigate()
   const timeoutRef = useRef(null)
-  const [blocked, setBlocked] = useState(false)
+  const [blocked] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+    return localStorage.getItem('cookieStripeSuccessExpired') === 'true'
+  })
 
   useEffect(() => {
-    if (localStorage.getItem('cookieStripeSuccessExpired') === 'true') {
-      setBlocked(true)
-      navigate('/ma-cuisine', { replace: true })
+    if (!blocked) {
+      return
     }
-  }, [navigate])
+    navigate('/ma-cuisine', { replace: true })
+  }, [blocked, navigate])
 
   useEffect(() => {
     if (!user) return
@@ -46,11 +51,11 @@ export default function StripeSuccessPage() {
       }
     })
 
-    return () => unsubscribe()
     return () => {
       unsubscribe()
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
       }
     }
   }, [user, expired])

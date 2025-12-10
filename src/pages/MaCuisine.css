@@ -1,0 +1,169 @@
+.kitchen-page {
+  padding: clamp(24px, 5vw, 48px);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.kitchen-hero {
+  margin-bottom: clamp(24px, 4vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kitchen-eyebrow {
+  font-size: 0.9rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #8da2c9;
+  margin: 0;
+}
+
+.kitchen-hero h1 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  font-weight: 700;
+}
+
+.kitchen-hero p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 1rem;
+}
+
+.kitchen-wallet-card {
+  background: linear-gradient(130deg, #050910 0%, #020406 35%, #0a1424 100%);
+  border-radius: 20px;
+  padding: clamp(20px, 4vw, 28px);
+  margin-bottom: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  box-shadow: 0 25px 60px rgba(3, 7, 18, 0.55);
+}
+
+.kitchen-wallet-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.kitchen-wallet-head h2 {
+  margin: 4px 0 0;
+  color: #f8fafc;
+  font-size: 1.4rem;
+}
+
+.kitchen-wallet-subtitle {
+  color: #94a3b8;
+  margin: 6px 0 0;
+  max-width: 420px;
+  line-height: 1.5;
+}
+
+.kitchen-wallet-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.kitchen-status-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kitchen-wallet-balance {
+  margin-top: 24px;
+  padding: clamp(18px, 4vw, 28px);
+  border-radius: 18px;
+  border: 1px solid rgba(37, 75, 117, 0.4);
+  background: rgba(12, 20, 34, 0.85);
+}
+
+.kitchen-wallet-balance span {
+  color: #9fb6de;
+  letter-spacing: 0.15em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.kitchen-wallet-amount {
+  margin: 6px 0 4px;
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.kitchen-wallet-footnote {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.kitchen-wallet-breakdown {
+  margin-top: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.kitchen-breakdown-card {
+  border-radius: 16px;
+  border: 1px solid rgba(31, 58, 92, 0.5);
+  background: rgba(6, 12, 24, 0.9);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kitchen-breakdown-card p {
+  margin: 0;
+  color: #cbd5f5;
+  font-weight: 600;
+}
+
+.kitchen-breakdown-card strong {
+  font-size: 1.4rem;
+  color: #f8fafc;
+}
+
+.kitchen-breakdown-card small {
+  color: #94a3b8;
+}
+
+.kitchen-wallet-note {
+  margin-top: 18px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.kitchen-wallet-alert {
+  margin-top: 20px;
+  border-radius: 16px;
+  border: 1px dashed rgba(59, 130, 246, 0.4);
+  padding: 18px;
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.45);
+  line-height: 1.5;
+}
+
+.kitchen-wallet-alert--error {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+  background: rgba(153, 27, 27, 0.2);
+}
+
+@media (max-width: 640px) {
+  .kitchen-wallet-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}

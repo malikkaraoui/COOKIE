@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { PiggyBank, TrendingUp, Bell, Star, Gift } from 'lucide-react'
+import { PiggyBank, TrendingUp, ChefHat, Star, Gift } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import cookieLogo from '/logo.png'
 import { useResizablePanel } from '../hooks/useResizablePanel'
@@ -8,6 +8,8 @@ import { useUserProfile } from '../hooks/useUserProfile'
 import { useXpProgress } from '../hooks/useXpProgress'
 import { useWalletIdentity } from '../hooks/useWalletIdentity'
 import { openReownModal } from '../lib/reown/appkitConfig'
+import { useHyperliquidCurtain } from '../hooks/useHyperliquidCurtain'
+import { useHyperliquidExposure } from '../hooks/useHyperliquidExposure'
 
 // Modifie ici les réglages par défaut de la topbar
 const TOPBAR_DESKTOP_CONFIG = {
@@ -51,6 +53,14 @@ export default function Topbar() {
   const xp = useXpProgress()
   const walletIdentity = useWalletIdentity()
   const navigate = useNavigate()
+  const { status: curtainStatus, pullCurtain } = useHyperliquidCurtain()
+  const {
+    hasExposure,
+    status: exposureStatus,
+    counts: exposureCounts,
+    error: exposureError,
+    refresh: refreshExposure
+  } = useHyperliquidExposure({ pollIntervalMs: 45000 })
 
   // Détection mobile
   useEffect(() => {
@@ -121,6 +131,81 @@ export default function Topbar() {
       ? 'Chargement…'
       : 'Connecte ton wallet'
 
+  useEffect(() => {
+    if (curtainStatus.state === 'success') {
+      refreshExposure()
+    }
+  }, [curtainStatus.state, refreshExposure])
+
+  const curtainLabel = useMemo(() => {
+    if (curtainStatus.state === 'loading') {
+      return 'On baisse le rideau…'
+    }
+    if (!hasExposure) {
+      if (exposureStatus === 'loading' || exposureStatus === 'refreshing') {
+        return 'Inventaire de la cuisine…'
+      }
+      if (exposureStatus === 'error') {
+        return 'Statut indisponible'
+      }
+      return 'Cuisine à plat'
+    }
+    if (curtainStatus.state === 'success') {
+      return 'Rideau baissé ✅'
+    }
+    if (curtainStatus.state === 'error') {
+      return 'Réessayer'
+    }
+    return 'On baisse le rideau'
+  }, [curtainStatus.state, exposureStatus, hasExposure])
+
+  const curtainMetaLabel = useMemo(() => {
+    if (!hasExposure) {
+      return exposureStatus === 'error' ? 'Impossible de lire les positions' : null
+    }
+    const { positions, orders } = exposureCounts
+    const segments = []
+    if (positions > 0) {
+      segments.push(`${positions} pos`)
+    }
+    if (orders > 0) {
+      segments.push(`${orders} ordre${orders > 1 ? 's' : ''}`)
+    }
+    return segments.join(' • ') || null
+  }, [hasExposure, exposureCounts, exposureStatus])
+
+  const curtainTooltip = useMemo(() => {
+    if (curtainStatus.message) {
+      return curtainStatus.message
+    }
+    if (curtainStatus.state === 'error') {
+      return 'Hyperliquid a rejeté la fermeture. Réessaie dans quelques secondes.'
+    }
+    if (exposureStatus === 'loading' || exposureStatus === 'refreshing') {
+      return 'Lecture des ordres et positions Hyperliquid…'
+    }
+    if (exposureStatus === 'error') {
+      return exposureError || 'Impossible de vérifier les positions Hyperliquid'
+    }
+    if (!hasExposure) {
+      return 'Aucun ordre ni position Hyperliquid ouverts.'
+    }
+    const parts = []
+    if (exposureCounts.positions > 0) {
+      parts.push(`${exposureCounts.positions} position${exposureCounts.positions > 1 ? 's' : ''}`)
+    }
+    if (exposureCounts.orders > 0) {
+      parts.push(`${exposureCounts.orders} ordre${exposureCounts.orders > 1 ? 's' : ''} au carnet`)
+    }
+    return parts.length ? `Encore ${parts.join(' • ')}` : 'Fermer toutes les positions Hyperliquid'
+  }, [curtainStatus.message, curtainStatus.state, exposureStatus, exposureError, hasExposure, exposureCounts])
+
+  const curtainDisabled =
+    curtainStatus.state === 'loading' ||
+    exposureStatus === 'loading' ||
+    exposureStatus === 'refreshing' ||
+    (!hasExposure && exposureStatus !== 'error')
+
   return (
     <>
       <header className="topbar" style={{ minHeight: topbarHeight }}>
@@ -159,8 +244,23 @@ export default function Topbar() {
               </div>
 
               <div className="tapbar-profile">
-                <button type="button" className="tapbar-bell" aria-label="Notifications">
-                  <Bell size={18} />
+                <button
+                  type="button"
+                  className="tapbar-curtain"
+                  aria-label="On baisse le rideau"
+                  onClick={pullCurtain}
+                  data-state={curtainStatus.state}
+                  data-exposure={hasExposure ? 'open' : 'flat'}
+                  disabled={curtainDisabled}
+                  title={curtainTooltip}
+                >
+                  <ChefHat size={16} />
+                  <span className="tapbar-curtain-copy">
+                    <span className="tapbar-curtain-label">{curtainLabel}</span>
+                    {curtainMetaLabel && (
+                      <span className="tapbar-curtain-meta">{curtainMetaLabel}</span>
+                    )}
+                  </span>
                 </button>
                 <button
                   type="button"
