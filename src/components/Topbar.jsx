@@ -89,6 +89,11 @@ export default function Topbar() {
   const totalSavingsLabel = EURO_FORMATTER.format(TOTAL_SAVINGS_PLACEHOLDER)
   const performanceLabel = `${PERFORMANCE_PLACEHOLDER >= 0 ? '+' : ''}${PERFORMANCE_PLACEHOLDER.toFixed(1)}%`
 
+    const neutralizeStatCardClick = (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+
   const displayName = useMemo(() => {
     if (profile?.firstName || profile?.lastName) {
       return [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim()
@@ -243,7 +248,12 @@ export default function Topbar() {
               </div>
 
               <div className="tapbar-stats" aria-live="polite">
-                <div className="tapbar-stat-card tapbar-stat-card--savings">
+                <div
+                  className="tapbar-stat-card tapbar-stat-card--savings"
+                  role="presentation"
+                  onClick={neutralizeStatCardClick}
+                  onMouseDown={neutralizeStatCardClick}
+                >
                   <div className="tapbar-stat-icon">
                     <PiggyBank size={18} />
                   </div>
@@ -252,7 +262,12 @@ export default function Topbar() {
                     <strong>{totalSavingsLabel}</strong>
                   </div>
                 </div>
-                <div className="tapbar-stat-card tapbar-stat-card--performance">
+                <div
+                  className="tapbar-stat-card tapbar-stat-card--performance"
+                  role="presentation"
+                  onClick={neutralizeStatCardClick}
+                  onMouseDown={neutralizeStatCardClick}
+                >
                   <div className="tapbar-stat-icon">
                     <TrendingUp size={18} />
                   </div>

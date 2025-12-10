@@ -24,6 +24,8 @@
   --cookie-radius-pill: 999px;
   --cookie-radius-card: 18px;
   --cookie-topbar-height: 96px;
+  --tapbar-bubble-min-height: 72px;
+  --tapbar-bubble-min-width: clamp(200px, 18vw, 260px);
 }
 
 html,
@@ -167,8 +169,13 @@ button:active {
   align-items: center;
   gap: 12px;
   text-align: left;
-  min-width: 220px;
-  flex: 1 1 220px;
+  min-width: var(--tapbar-bubble-min-width);
+  width: min(100%, var(--tapbar-bubble-min-width));
+  min-height: var(--tapbar-bubble-min-height);
+  flex: 1 1 var(--tapbar-bubble-min-width);
+  pointer-events: auto;
+  cursor: default;
+  user-select: none;
 }
 
 .tapbar-stat-card--performance {
@@ -219,7 +226,7 @@ button:active {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 18px;
+  padding: 12px 22px;
   border-radius: 999px;
   border: none;
   background: linear-gradient(135deg, #f97316, #ea580c);
@@ -229,6 +236,10 @@ button:active {
   box-shadow: 0 15px 35px rgba(249, 115, 22, 0.35);
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  min-width: var(--tapbar-bubble-min-width);
+  width: min(100%, var(--tapbar-bubble-min-width));
+  min-height: var(--tapbar-bubble-min-height);
+  flex-shrink: 0;
 }
 
 .tapbar-curtain:hover:not(:disabled) {
@@ -260,11 +271,17 @@ button:active {
   flex-direction: column;
   align-items: flex-start;
   line-height: 1.1;
+  min-width: 0;
+  width: 100%;
 }
 
 .tapbar-curtain-label {
   font-size: 0.82rem;
   font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .tapbar-curtain-meta {
@@ -272,13 +289,17 @@ button:active {
   font-weight: 500;
   opacity: 0.85;
   color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
 }
 
 .tapbar-profile-info {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 16px;
+  padding: 12px 22px;
   border-radius: var(--cookie-radius-pill);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(229, 243, 255, 0.9));
   border: 1px solid transparent;
@@ -288,6 +309,10 @@ button:active {
   font: inherit;
   color: inherit;
   box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12);
+  min-width: var(--tapbar-bubble-min-width);
+  width: min(100%, var(--tapbar-bubble-min-width));
+  min-height: var(--tapbar-bubble-min-height);
+  flex-shrink: 0;
 }
 
 .tapbar-profile-info:hover {
@@ -320,14 +345,27 @@ button:active {
   object-fit: cover;
 }
 
+.tapbar-profile-info > div:last-child {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
 .tapbar-profile-info strong {
   display: block;
   font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tapbar-profile-info span {
   font-size: 0.75rem;
   color: var(--cookie-color-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 

@@ -1,0 +1,54 @@
+# instructionGitbook.md  
+**Objet :** configurer et maintenir une documentation GitBook à partir du code source du projet `COOKIE` (repo GitHub `malikkaraoui/COOKIE`), en utilisant uniquement des fichiers Markdown versionnés dans le repo.
+
+Tu es Copilot. Tu travailles **dans le repo `COOKIE`** de Malik Karaoui.  
+Tu dois :
+
+1. Mettre en place la structure de doc compatible GitBook.
+2. Générer les premiers fichiers de documentation.
+3. Aider à garder cette doc à jour quand le code évolue.
+
+Tout doit tenir dans ce repo, aucune magie externe : seulement des fichiers `.md` et un `.gitbook.yaml`.
+
+
+---
+
+## 1. Contexte pour toi, Copilot
+
+- Le projet `COOKIE` est une **plateforme web** (React + Vite + Tailwind) qui orchestre des stratégies financières via :
+  - Hyperliquid (perp + funding),
+  - Binance (spot / perp),
+  - Firebase (Auth, Functions, Realtime Database),
+  - Stripe (Checkout + Webhooks).
+
+- Malik veut :
+  - une **doc lisible pour humains** (GitBook),
+  - **tout piloté par le code** : la doc est dans le repo, GitBook ne fait que la publier.
+
+- GitBook fonctionne très bien avec :
+  - un **dossier racine de doc** (on utilisera `/docs`),
+  - un fichier `SUMMARY.md` qui décrit le menu,
+  - un fichier `.gitbook.yaml` à la racine qui indique où se trouve la doc.
+
+
+---
+
+## 2. Structure de base à créer dans le repo
+
+### 2.1. Dossier `/docs`
+
+Si le dossier `docs/` n’existe pas à la racine du projet `COOKIE`, tu dois le créer avec cette structure minimale :
+
+```text
+/docs
+  README.md
+  SUMMARY.md
+  01-intro.md
+  02-architecture.md
+  03-front-end.md
+  04-back-end-firebase.md
+  05-stripe.md
+  06-hyperliquid-binance.md
+  07-donnees-modeles.md
+  08-deploiement-et-env.md
+  09-roadmap.md

@@ -5,15 +5,16 @@
 
 import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import TokenTile from '../elements/TokenTile'
-import TokenWeightSlider from '../elements/TokenWeightSlider'
 import TokenWeightRow from '../elements/TokenWeightRow'
 import PortfolioResults from '../elements/PortfolioResults'
 import PortfolioChart from '../elements/PortfolioChart'
+import KitchenPerformanceChart from '../elements/KitchenPerformanceChart'
 import { usePortfolioSimulation } from '../hooks/usePortfolioSimulation'
 import { useTradeNotifications } from '../hooks/useTradeNotifications'
 import { useSelectedTokens } from '../context/SelectedTokensContext'
 import { useAuth } from '../hooks/useAuth'
 import { useHyperliquidAccount } from '../hooks/useHyperliquidAccount'
+import { useHyperliquidHistory } from '../hooks/useHyperliquidHistory'
 import { useMarketData } from '../providers/MarketDataProvider'
 import { buildMarketDataKey } from '../lib/marketDataKeys'
 import { getTokenConfig } from '../config/tokenList'
@@ -98,7 +99,6 @@ const TOKEN_PRICE_CONSTRAINTS = {
   ETH: { tick: 0.1, decimals: 1 }
 }
 const DEFAULT_PRICE_DECIMALS = 4
-// Supporter les tokens Hyperliquid avec des prix < 1e-8 (ex: kPEPE)
 const PRICE_DISPLAY_FRACTION_DIGITS = 12
 const SMALL_VALUE_MAX_DECIMALS = 12
 const PRICE_NUDGE_DECIMALS = 6
@@ -107,7 +107,6 @@ const BINANCE_MAX_ORDER_FORMS = 10
 const BINANCE_TARGET_NOTIONAL_USDT = 25
 const BINANCE_DEFAULT_TIME_IN_FORCE = 'GTC'
 const BINANCE_PRICE_FILTER_ENDPOINT = 'https://api.binance.com/api/v3/exchangeInfo'
-
 const BUDGET_MODES = {
   WALLET: 'wallet',
   CUSTOM: 'custom'
@@ -152,6 +151,8 @@ const BINANCE_TOKEN_LOOKUP = BINANCE_DEFAULT_TOKENS.reduce((acc, token) => {
   return acc
 }, {})
 
+const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
+
 const getBinancePairSymbol = (symbol) => {
   if (!symbol) {
     return ''
@@ -184,6 +185,13 @@ const trimTrailingZeros = (value) => {
   return trimmed
 }
 
+const toCanonicalDecimalString = (value) => {
+  if (value == null) {
+    return ''
+  }
+  return String(value).replace(',', '.')
+}
+
 const countDecimalPlaces = (value) => {
   if (value == null || value === '') {
     return 0
@@ -204,7 +212,6 @@ const derivePricePrecision = (value, fallback = PRICE_NUDGE_DECIMALS) => {
   return fallback
 }
 
-const normalizeSymbol = (value) => (typeof value === 'string' ? value.trim().toUpperCase() : '')
 const DECIMAL_INPUT_REGEX = /^\d*(?:[,.]\d*)?$/u
 
 const normalizeDecimalInput = (value) => {
@@ -219,13 +226,6 @@ const isValidDecimalInput = (value) => {
     return true
   }
   return DECIMAL_INPUT_REGEX.test(value)
-}
-
-const toCanonicalDecimalString = (value) => {
-  if (value == null) {
-    return ''
-  }
-  return String(value).replace(',', '.')
 }
 
 const toDisplayDecimalString = (value) => {
@@ -296,6 +296,45 @@ const getPriceDecimals = (symbol) => {
     return constraint.decimals
   }
   return PRICE_DISPLAY_FRACTION_DIGITS
+}
+
+const formatNumericString = (value, options = {}) => {
+  const {
+    maximumFractionDigits = 4,
+    preserveTinyValues = false,
+    limitHighValues = false
+  } = options
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return value ?? '—'
+  const isTiny = preserveTinyValues && Math.abs(numeric) < 1
+  const absValue = Math.abs(numeric)
+  let digits = isTiny
+    ? Math.max(maximumFractionDigits, SMALL_VALUE_MAX_DECIMALS)
+    : maximumFractionDigits
+  if (!isTiny && limitHighValues && absValue >= 1) {
+    digits = Math.min(digits, 2)
+  }
+  return numeric.toLocaleString('fr-FR', {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: isTiny ? Math.min(4, digits) : 0
+  })
+}
+
+const formatTimestamp = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  return new Date(numeric).toLocaleString('fr-FR', { hour12: false })
+}
+
+const formatJsonPayload = (payload) => {
+  if (payload === null || typeof payload === 'undefined') {
+    return 'Aucune réponse API reçue pour le moment.'
+  }
+  try {
+    return JSON.stringify(payload, null, 2)
+  } catch {
+    return String(payload)
+  }
 }
 
 const getPriceStepValue = (symbol, currentValue, precisionHint) => {
@@ -656,6 +695,20 @@ export default function Page2() {
     return tokensData.filter((token) => token.source !== 'binance')
   }, [tokensData])
 
+  const hyperliquidSymbols = useMemo(() => {
+    return portfolioTokensData.map((token) => token.symbol)
+  }, [portfolioTokensData])
+
+  const {
+    data: historicalReturns,
+    loading: historicalLoading,
+    error: historicalError,
+    lastUpdated: historicalUpdatedAt
+  } = useHyperliquidHistory(hyperliquidSymbols, {
+    timeframes: [5, 10, 15, 20],
+    enabled: portfolioTokensData.length > 0
+  })
+
   const tokenPriceMap = useMemo(() => {
     return tokensData.reduce((acc, token) => {
       const numericPrice = Number(token.price)
@@ -693,7 +746,44 @@ export default function Page2() {
     return 0
   }, [capitalInitial, hyperliquidWalletAvailableUsd])
 
+  const projectionCapital = useMemo(() => {
+    const numericResolved = Number(resolvedPortfolioBudgetUsd)
+    if (Number.isFinite(numericResolved) && numericResolved > 0) {
+      return numericResolved
+    }
+    const numericInitial = Number(capitalInitial)
+    if (Number.isFinite(numericInitial) && numericInitial > 0) {
+      return numericInitial
+    }
+    return 1000
+  }, [capitalInitial, resolvedPortfolioBudgetUsd])
+
   const canUsePortfolioAutoOrder = hasOrderableTokens && resolvedPortfolioBudgetUsd >= MIN_ORDER_NOTIONAL_USDC
+
+  const heroBudgetLabel = formatNumericString(resolvedPortfolioBudgetUsd ?? 0, {
+    maximumFractionDigits: 0,
+    limitHighValues: true
+  })
+  const heroWalletLabel = Number.isFinite(hyperliquidWalletAvailableUsd)
+    ? formatNumericString(hyperliquidWalletAvailableUsd, {
+      maximumFractionDigits: 0,
+      limitHighValues: true
+    })
+    : '—'
+  const heroLastSyncLabel = hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'
+  const totalWeightPercent = useMemo(() => {
+    if (!weights) {
+      return 0
+    }
+    return Object.values(weights).reduce((sum, value) => sum + (Number(value) || 0), 0)
+  }, [weights])
+  const totalWeightDisplay = useMemo(() => {
+    return `${formatNumericString(totalWeightPercent * 100, {
+      maximumFractionDigits: 1,
+      limitHighValues: true
+    })}%`
+  }, [totalWeightPercent])
+  const isAllocationBalanced = Math.abs(totalWeightPercent - 1) < 0.001
 
   useEffect(() => {
     if (budgetMode !== BUDGET_MODES.CUSTOM) {
@@ -2219,8 +2309,6 @@ export default function Page2() {
     error: '#f87171'
   }
 
-  const orderStatusColor = statusColorMap[orderStatus.state]
-  const openOrdersStatusColor = statusColorMap[openOrdersStatus.state]
   const binanceOrderStatusColor = statusColorMap[binanceOrderStatus.state]
   const binanceLargeOrderStatusColor = statusColorMap[binanceLargeOrderStatus.state]
   const binanceFetchStatusColor = statusColorMap[binanceFetchStatus.state]
@@ -2278,45 +2366,6 @@ export default function Page2() {
     }
   }, [binanceRecentOrdersList, notifyOrderClosedByWatcher, notifyOrderExecuted])
   const binanceFiltersCacheRef = useRef({})
-
-  const formatNumericString = (value, options = {}) => {
-    const {
-      maximumFractionDigits = 4,
-      preserveTinyValues = false,
-      limitHighValues = false
-    } = options
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return value ?? '—'
-    const isTiny = preserveTinyValues && Math.abs(numeric) < 1
-    const absValue = Math.abs(numeric)
-    let digits = isTiny
-      ? Math.max(maximumFractionDigits, SMALL_VALUE_MAX_DECIMALS)
-      : maximumFractionDigits
-    if (!isTiny && limitHighValues && absValue >= 1) {
-      digits = Math.min(digits, 2)
-    }
-    return numeric.toLocaleString('fr-FR', {
-      maximumFractionDigits: digits,
-      minimumFractionDigits: isTiny ? Math.min(4, digits) : 0
-    })
-  }
-
-  const formatTimestamp = (value) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return '—'
-    return new Date(numeric).toLocaleString('fr-FR', { hour12: false })
-  }
-
-  const formatJsonPayload = (payload) => {
-    if (payload === null || typeof payload === 'undefined') {
-      return 'Aucune réponse API reçue pour le moment.'
-    }
-    try {
-      return JSON.stringify(payload, null, 2)
-    } catch {
-      return String(payload)
-    }
-  }
 
   const renderHyperliquidAccountSummary = () => {
     const isLoading = hlStatus === 'loading'
@@ -2376,45 +2425,49 @@ export default function Page2() {
     }
 
     return (
-      <section className="kitchen-wallet-card">
-        <header className="kitchen-wallet-head">
+      <section className="k-card k-card--accent">
+        <div className="k-card__head">
           <div>
-            <p className="kitchen-eyebrow">Portefeuille Hyperliquid</p>
-            <h2>Ma tirelire perp</h2>
-            <p className="kitchen-wallet-subtitle">
-              Solde retirable du compte perp rafraîchi toutes les 25&nbsp;s.
-            </p>
+            <p className="k-tag">Hyperliquid</p>
+            <h3 className="k-card__title">Solde perp</h3>
           </div>
-          <div className="kitchen-wallet-actions">
-            <span className="kitchen-status-pill" style={statusStyle}>
-              {statusLabel}
-            </span>
-          </div>
-        </header>
+          <span className="k-status" style={statusStyle}>
+            {statusLabel}
+          </span>
+        </div>
 
         {showConnectCallout ? (
-          <div className="kitchen-wallet-alert">
-            Connecte ton wallet Hyperliquid pour synchroniser automatiquement ta tirelire.
-            Cette carte affiche uniquement ton capital perp retirable.
+          <div className="k-empty">
+            Connecte ton wallet Hyperliquid pour afficher la tirelire.
           </div>
         ) : (
           hasMetrics && (
             <>
-              <div className="kitchen-wallet-balance">
-                <span>Solde withdrawable</span>
-                <p className="kitchen-wallet-amount">{formatUsdc(maTirelireValue, 2)}</p>
-                <p className="kitchen-wallet-footnote">Disponible immédiatement sur Hyperliquid (perps)</p>
+              <div className="k-metrics">
+                <div className="k-metric">
+                  <span>Withdrawable</span>
+                  <strong>{formatUsdc(maTirelireValue, 2)}</strong>
+                </div>
+                <div className="k-metric">
+                  <span>Spot libre</span>
+                  <strong>{formatUsdc(hyperliquidSummary?.spotAvailable ?? 0, 0)}</strong>
+                </div>
+                <div className="k-metric">
+                  <span>Total compte</span>
+                  <strong>{formatUsdc(hyperliquidSummary?.globalTotal ?? 0, 0)}</strong>
+                </div>
               </div>
 
               {hlError && (
-                <div className="kitchen-wallet-alert kitchen-wallet-alert--error">
-                  {hlError}
-                </div>
+                <div className="k-alert k-alert--danger">{hlError}</div>
               )}
 
-              <p className="kitchen-wallet-note">
-                Dernière synchro : {hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'} • Poll 25s côté client
-              </p>
+              <div className="k-card__footer">
+                <span className="k-note">MAJ {hlUpdatedAt ? formatTimestamp(hlUpdatedAt) : '—'}</span>
+                <span className={`k-inline-pill ${hlHasWallet ? 'green' : 'red'}`}>
+                  {hlHasWallet ? 'Wallet connecté' : 'Wallet requis'}
+                </span>
+              </div>
             </>
           )
         )}
@@ -2447,71 +2500,43 @@ export default function Page2() {
       : '—'
 
     return (
-      <section
-        style={{
-          background: 'linear-gradient(125deg, rgba(9,12,24,0.95), rgba(12,18,34,0.9))',
-          borderRadius: '18px',
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid rgba(59,130,246,0.15)',
-          boxShadow: '0 25px 60px rgba(15,23,42,0.35)'
-        }}
-      >
-        <header style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '18px' }}>
-          <p style={{ margin: 0, color: '#7dd3fc', fontSize: '13px', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            Pilotage du budget Hyperliquid
-          </p>
-          <h3 style={{ margin: 0, color: '#f8fafc', fontSize: '20px' }}>Choisis la part de capital engagée</h3>
-          <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px', lineHeight: 1.5 }}>
-            Limite automatiquement la taille des achats groupés pour ne jamais vider ton wallet Hyperliquid. Bascule en mode personnalisé si tu veux saisir un montant précis.
-          </p>
-        </header>
-
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '20px' }}>
-          {[{
-            id: BUDGET_MODES.WALLET,
-            label: 'Auto (pourcentage du wallet)',
-            helper: 'Ajuste le ratio utilisé sur Hyperliquid'
-          }, {
-            id: BUDGET_MODES.CUSTOM,
-            label: 'Budget personnalisé',
-            helper: 'Définis un montant fixe en USDC'
-          }].map((option) => {
-            const isActive = budgetMode === option.id
-            return (
+      <section className="k-card k-card--ghost">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Budget</p>
+            <h3 className="k-card__title">Allocation automatique</h3>
+          </div>
+          <div className="k-pill-group">
+            {[{
+              id: BUDGET_MODES.WALLET,
+              label: 'Auto wallet'
+            }, {
+              id: BUDGET_MODES.CUSTOM,
+              label: 'Montant fixe'
+            }].map((option) => (
               <button
                 key={option.id}
                 type="button"
+                className={`k-pill ${budgetMode === option.id ? 'is-active' : ''}`}
                 onClick={() => handleBudgetModeChange(option.id)}
-                style={{
-                  flex: 1,
-                  minWidth: '220px',
-                  borderRadius: '12px',
-                  border: isActive ? '1px solid rgba(16,185,129,0.8)' : '1px solid rgba(148,163,184,0.3)',
-                  background: isActive ? 'rgba(16,185,129,0.08)' : 'rgba(15,23,42,0.5)',
-                  color: isActive ? '#bbf7d0' : '#cbd5f5',
-                  padding: '12px 14px',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '4px'
-                }}
               >
-                <span style={{ fontWeight: 600, fontSize: '15px' }}>{option.label}</span>
-                <span style={{ fontSize: '13px', color: '#94a3b8' }}>{option.helper}</span>
+                {option.label}
               </button>
-            )
-          })}
+            ))}
+          </div>
         </div>
 
         {budgetMode === BUDGET_MODES.WALLET ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <p style={{ margin: 0, color: '#cbd5f5', fontSize: '14px' }}>
-              Utilisation actuelle : <strong style={{ color: '#facc15' }}>{ratioPercent}%</strong> du disponible Hyperliquid perp (solde <em>Withdrawable</em>)
-              {walletDataReady ? ` (${engagedFromWallet})` : ''}. Fais glisser le curseur pour réduire l’impact des achats automatisés.
-            </p>
+          <div className="k-section-gap">
+            <div className="k-inline-group">
+              <small className="k-inline-hint">Ratio</small>
+              <strong>{ratioPercent}%</strong>
+              {walletDataReady && (
+                <span className="k-inline-pill">{engagedFromWallet}</span>
+              )}
+            </div>
             <input
+              className="k-range"
               type="range"
               min={Math.round(AUTO_BUDGET_MIN_RATIO * 100)}
               max={100}
@@ -2519,353 +2544,187 @@ export default function Page2() {
               value={ratioPercent}
               onChange={handleWalletRatioChange}
               disabled={!walletDataReady}
-              style={{ width: '100%', cursor: walletDataReady ? 'pointer' : 'not-allowed' }}
             />
             {!walletDataReady && (
-              <p style={{ margin: 0, color: '#fca5a5', fontSize: '13px' }}>
-                Connecte ton wallet Hyperliquid pour activer le mode automatique.
-              </p>
+              <p className="k-note k-note--error">Connecte ton wallet Hyperliquid pour activer le slider.</p>
             )}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <label style={{ color: '#cbd5f5', fontSize: '14px', fontWeight: 600 }} htmlFor="manual-budget-input">
-              Budget engagé (USDC)
-            </label>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                border: '1px solid rgba(148,163,184,0.4)',
-                borderRadius: '10px',
-                background: 'rgba(15,23,42,0.6)'
-              }}
-            >
-              <input
-                id="manual-budget-input"
-                type="text"
-                value={manualBudgetInput}
-                onChange={handleManualBudgetInputChange}
-                onFocus={handleManualBudgetInputFocus}
-                onBlur={handleManualBudgetInputBlur}
-                inputMode="decimal"
-                placeholder="1500"
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#f8fafc',
-                  fontSize: '18px',
-                  padding: '12px 14px',
-                  outline: 'none'
-                }}
-              />
-              <span style={{ padding: '0 14px', color: '#94a3b8', fontWeight: 600 }}>USDC</span>
+          <div className="k-form-grid">
+            <div className="k-field">
+              <label className="k-label" htmlFor="manual-budget-input">
+                Budget engagé
+              </label>
+              <div className="k-inline-actions">
+                <input
+                  id="manual-budget-input"
+                  className="k-input"
+                  type="text"
+                  value={manualBudgetInput}
+                  onChange={handleManualBudgetInputChange}
+                  onFocus={handleManualBudgetInputFocus}
+                  onBlur={handleManualBudgetInputBlur}
+                  inputMode="decimal"
+                  placeholder="1500"
+                />
+                <span className="k-inline-pill">USDC</span>
+              </div>
+              <span className="k-field__hint">Sauvegarde auto dans Firebase</span>
             </div>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>
-              Les modifications sont sauvegardées automatiquement (500&nbsp;ms) et stockées dans Firebase pour synchroniser tes appareils.
-            </p>
           </div>
         )}
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: '14px',
-            marginTop: '20px'
-          }}
-        >
-          <div
-            style={{
-              border: '1px solid rgba(148,163,184,0.2)',
-              borderRadius: '12px',
-              padding: '14px',
-              background: 'rgba(15,23,42,0.4)'
-            }}
-          >
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Budget engagé</p>
-            <strong style={{ display: 'block', marginTop: '6px', color: '#f8fafc', fontSize: '22px' }}>{engagedBudgetLabel}</strong>
-            <small style={{ color: '#64748b' }}>Utilisé pour la répartition automatique</small>
+        <div className="k-metrics">
+          <div className="k-metric">
+            <span>Budget engagé</span>
+            <strong>{engagedBudgetLabel}</strong>
+            <small className="k-field__hint">Utilisé par la répartition</small>
           </div>
-          <div
-            style={{
-              border: '1px solid rgba(148,163,184,0.2)',
-              borderRadius: '12px',
-              padding: '14px',
-              background: 'rgba(15,23,42,0.4)'
-            }}
-          >
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '13px' }}>Disponible Hyperliquid</p>
-            <strong style={{ display: 'block', marginTop: '6px', color: '#f8fafc', fontSize: '22px' }}>{walletAvailableLabel}</strong>
-            <small style={{ color: '#64748b' }}>Actualisé toutes les 25&nbsp;s</small>
+          <div className="k-metric">
+            <span>Wallet disponible</span>
+            <strong>{walletAvailableLabel}</strong>
+            <small className="k-field__hint">Refresh 25&nbsp;s</small>
           </div>
         </div>
       </section>
     )
   }
 
-  const renderBinanceSpotControls = () => (
-    <>
-      {/* Contrôle Binance Spot */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #051425 0%, #020812 100%)',
-          borderRadius: '14px',
-          padding: '20px',
-          marginBottom: '20px',
-          border: '1px solid #102038',
-          boxShadow: '0 10px 35px rgba(2, 8, 18, 0.65)'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '16px',
-            alignItems: 'stretch',
-            justifyContent: 'space-between'
-          }}
-        >
-          <div style={{ flex: 1, minWidth: '240px' }}>
-            <h3 style={{ color: '#f0f9ff', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-              🧪 Pilotage Binance Spot Testnet
-            </h3>
-            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: '12px', lineHeight: 1.5 }}>
-              Utilise nos fonctions Firebase pour envoyer un ordre market BTC/USDT pré-paramétré,
-              interroger les ordres ouverts et nettoyer le carnet en un clic. Tout passe par le client HMAC sécurisé
-              déployé dans le dossier <span style={{ fontFamily: 'monospace', color: '#bae6fd' }}>functions</span>.
-            </p>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '10px',
-                padding: '10px 14px',
-                borderRadius: '12px',
-                border: '1px solid #1e293b',
-                background: 'rgba(15, 23, 42, 0.6)'
-              }}
-            >
-              <div
-                style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '999px',
-                  background: '#0ea5e9'
-                }}
-              ></div>
-              <div style={{ color: '#cbd5f5', margin: 0, fontSize: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <span>Ordres preset BTCUSDT :</span>
-                <span>
-                  • <strong>BUY 20 USDT</strong> (test micro ordre)
-                </span>
-                <span>
-                  • <strong>BUY 100 USDT</strong> (ordre pour seuil notional ≥ 100 USDT)
-                </span>
-              </div>
-            </div>
-          </div>
+  const renderBinanceSpotControls = () => {
+    const quickActions = [
+      {
+        label: 'Ordre market BUY',
+        description: 'BTC/USDT · 20 USDT',
+        action: handleBinancePresetOrder,
+        status: binanceOrderStatus
+      },
+      {
+        label: 'Ordre market 100 USDT',
+        description: 'BTC/USDT · 100 USDT',
+        action: handleBinanceLargePresetOrder,
+        status: binanceLargeOrderStatus
+      },
+      {
+        label: 'Lister les ordres',
+        description: 'Lecture carnet testnet',
+        action: handleFetchBinanceOpenOrders,
+        status: binanceFetchStatus
+      },
+      {
+        label: 'Cancel all + close',
+        description: 'Nettoyage rapide',
+        action: handleCancelAllBinanceOrders,
+        status: binanceCancelStatus
+      },
+      {
+        label: 'Fermer + convertir BNB',
+        description: 'Dust + BNB convert',
+        action: handleCloseAndDustBinancePositions,
+        status: binanceDustStatus
+      }
+    ]
 
-          <div
-            style={{
-              minWidth: '240px',
-              background: '#010a16',
-              borderRadius: '14px',
-              padding: '16px',
-              border: '1px solid #112035',
-              flex: 0.9
-            }}
-          >
-            <p style={{ color: '#cbd5f5', margin: 0, fontWeight: 600 }}>Accès API interne</p>
-            <ul
-              style={{
-                color: '#94a3b8',
-                margin: '10px 0 0 16px',
-                padding: 0,
-                listStyle: 'disc',
-                lineHeight: 1.4
-              }}
-            >
-              <li>Cloud Function privée (node 22) avec signature HMAC</li>
-              <li>Flux Firebase (Realtime DB) pour suivre le statut</li>
-              <li>Préfixes <strong>:binance</strong> pour différencier les tokens</li>
-            </ul>
+    const logEntries = [
+      { label: 'Envoi ordre market', status: binanceOrderStatus },
+      { label: 'Ordre market 100 USDT', status: binanceLargeOrderStatus },
+      { label: 'Listing des ordres', status: binanceFetchStatus },
+      { label: 'Fermeture / Cancel all', status: binanceCancelStatus },
+      { label: 'Fermeture + BNB', status: binanceDustStatus },
+      { label: 'Batch multi-ordres', status: binanceBatchStatus }
+    ]
+
+    return (
+      <>
+      {/* Contrôle Binance Spot */}
+      <section className="k-card">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Binance testnet</p>
+            <h3 className="k-card__title">🧪 Pilotage Spot</h3>
+            <p className="k-paragraph-light">
+              Fonctions Firebase HMAC côté serveur pour piloter BTC/USDT et nettoyer le carnet.
+            </p>
           </div>
         </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-            gap: '10px',
-            marginTop: '18px'
-          }}
-        >
-          {[{
-            label: 'Ordre market BUY',
-            action: handleBinancePresetOrder,
-            status: binanceOrderStatus,
-            color: '#3b82f6',
-            description: 'Envoie un ordre market BUY 20 USDT'
-          }, {
-            label: 'Ordre market 100 USDT',
-            action: handleBinanceLargePresetOrder,
-            status: binanceLargeOrderStatus,
-            color: '#8b5cf6',
-            description: 'Ordre BUY 100 USDT'
-          }, {
-            label: 'Lister ordres',
-            action: handleFetchBinanceOpenOrders,
-            status: binanceFetchStatus,
-            color: '#10b981',
-            description: 'Consulte le carnet testnet'
-          }, {
-            label: 'Cancel All',
-            action: handleCancelAllBinanceOrders,
-            status: binanceCancelStatus,
-            color: '#f97316',
-            description: 'Annule les ordres ouverts'
-          }, {
-            label: 'Fermer + convert BNB',
-            action: handleCloseAndDustBinancePositions,
-            status: binanceDustStatus,
-            color: '#f43f5e',
-            description: 'Ferme et convertit les poussières'
-          }].map((item) => (
-            <div
-              key={item.label}
-              style={{
-                border: '1px solid #102038',
-                borderRadius: '12px',
-                padding: '14px',
-                background: '#01050c'
-              }}
-            >
-              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>{item.label}</p>
-              <p style={{ color: '#64748b', margin: '6px 0 12px', fontSize: '13px' }}>{item.description}</p>
+        <div className="k-inline-actions k-inline-actions--wrap">
+          <span className="k-inline-pill blue">Preset BUY 20 USDT</span>
+          <span className="k-inline-pill blue">Preset BUY 100 USDT</span>
+          <span className="k-inline-pill">Cloud Function + Firebase</span>
+        </div>
+        <div className="k-compact-grid">
+          <div className="k-compact-card">
+            <h4>Accès API interne</h4>
+            <p>Cloud Function Node 22 signée HMAC, flux Firebase pour suivre les statuts et préfixes :binance.</p>
+          </div>
+          {quickActions.map((item) => (
+            <div key={item.label} className="k-compact-card">
+              <h4>{item.label}</h4>
+              <p>{item.description}</p>
               <button
+                className="k-cta"
+                style={{ width: '100%' }}
                 onClick={item.action}
                 disabled={item.status.state === 'loading'}
-                style={{
-                  width: '100%',
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  background: item.status.state === 'loading' ? '#1e293b' : item.color,
-                  color: 'white',
-                  fontWeight: 600,
-                  cursor: item.status.state === 'loading' ? 'not-allowed' : 'pointer'
-                }}
               >
                 {item.status.state === 'loading' ? 'En cours…' : 'Exécuter'}
               </button>
-              <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '8px' }}>
-                {item.status.message || 'Statut en attente.'}
-              </p>
+              <p className="k-note">{item.status.message || 'Statut en attente.'}</p>
             </div>
           ))}
         </div>
+      </section>
 
-        <div
-          style={{
-            marginTop: '20px',
-            padding: '18px',
-            borderRadius: '14px',
-            border: '1px solid #102038',
-            background: '#010814'
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+        <section className="k-card k-card--ghost">
+          <div className="k-card__head">
             <div>
-              <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '17px', fontWeight: 'bold' }}>
-                🧰 Batch multi-ordres limit Binance
-              </h3>
-              <p style={{ color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.5 }}>
-                Compose jusqu’à 10 ordres limit, auto-calcul en notional, envoi séquentiel sécurisé.
+              <p className="k-tag">Binance spot</p>
+              <h3 className="k-card__title">🧰 Batch multi-ordres limit</h3>
+              <p className="k-paragraph-light">
+                Compose jusqu’à 10 ordres limit, auto-calcul en notional et envoi séquentiel sécurisé côté Firebase.
               </p>
             </div>
-            <div
-              style={{
-                padding: '8px 14px',
-                borderRadius: '999px',
-                border: '1px solid #13304b',
-                color: '#38bdf8',
-                fontWeight: 600,
-                background: 'rgba(8, 47, 73, 0.35)'
-              }}
-            >
-              Jusqu’à {BINANCE_MAX_ORDER_FORMS} ordres
+            <div className="k-stack">
+              <span className="k-inline-pill blue">Jusqu’à {BINANCE_MAX_ORDER_FORMS} ordres</span>
+              <button
+                className="k-cta"
+                onClick={handleBinanceGridOrders}
+                disabled={binanceBatchStatus.state === 'loading' || !hasBinanceOrderableTokens}
+              >
+                {binanceBatchStatus.state === 'loading'
+                  ? 'Envoi des ordres…'
+                  : hasBinanceOrderableTokens
+                    ? `Placer ${binanceOrderForms.length} ordre(s)`
+                    : 'Sélectionne un token'}
+              </button>
             </div>
           </div>
 
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '12px',
-              marginTop: '16px'
-            }}
-          >
-            <div style={{ flex: 1, minWidth: '260px' }}>
-              <h3 style={{ color: '#f0f9ff', margin: 0, fontSize: '16px', fontWeight: 600 }}>
-                Tokens actifs ({binanceOrderForms.length})
-              </h3>
-              <p style={{ color: '#94a3b8', margin: '6px 0 0', lineHeight: 1.5 }}>
-                Sélectionne tes tokens <strong>:binance</strong> dans Ma Cuisine, ajuste taille et prix limite (achat uniquement)
-                puis expédie jusqu’à 10 ordres limit GTC d’un seul clic. Les prix live viennent du flux Firebase et le notional est recalculé en USDT.
+          <div className="k-grid-split">
+            <div className="k-stack">
+              <h4 className="k-section-title">Tokens actifs ({binanceOrderForms.length})</h4>
+              <p className="k-paragraph-light">
+                Sélectionne tes tokens <strong>:binance</strong>, règle taille et prix (achat uniquement) puis déclenche un lot GTC d’un seul clic.
               </p>
               {!hasBinanceOrderableTokens && (
-                <p style={{ color: '#f97316', margin: '8px 0 0', fontWeight: 500 }}>
+                <p className="k-note k-note--error">
                   Ajoute un token « :binance » via l’Épicerie fine pour activer ce module.
                 </p>
               )}
             </div>
-            <button
-              onClick={handleBinanceGridOrders}
-              disabled={binanceBatchStatus.state === 'loading' || !hasBinanceOrderableTokens}
-              style={{
-                padding: '12px 20px',
-                borderRadius: '12px',
-                border: 'none',
-                background:
-                  binanceBatchStatus.state === 'loading'
-                    ? '#1d314c'
-                    : hasBinanceOrderableTokens
-                      ? 'linear-gradient(135deg, #0ea5e9, #2563eb)'
-                      : '#1b2636',
-                color: '#e0f2fe',
-                fontWeight: 700,
-                fontSize: '15px',
-                cursor:
-                  binanceBatchStatus.state === 'loading' || !hasBinanceOrderableTokens
-                    ? 'not-allowed'
-                    : 'pointer',
-                minWidth: '200px'
-              }}
-            >
-              {binanceBatchStatus.state === 'loading'
-                ? 'Envoi des ordres…'
-                : hasBinanceOrderableTokens
-                  ? `Placer ${binanceOrderForms.length} ordre(s)`
-                  : 'Sélectionne un token'}
-            </button>
+            <div className="k-mini-card">
+              <span>Flux Firebase</span>
+              <strong>Notional auto • USDT</strong>
+              <p className="k-note">Prix live + recalcul instantané</p>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '18px' }}>
-            {!hasBinanceOrderableTokens && (
-              <div
-                style={{
-                  border: '1px dashed #1e293b',
-                  borderRadius: '14px',
-                  padding: '16px',
-                  color: '#cbd5f5',
-                  background: 'rgba(2,8,16,0.6)'
-                }}
-              >
-                🧺 Ajoute un token Binance depuis l’Épicerie pour pouvoir composer ici.
-              </div>
-            )}
+          {!hasBinanceOrderableTokens && (
+            <div className="k-alert k-alert--danger">
+              🧺 Ajoute un token Binance depuis l’Épicerie pour pouvoir composer ici.
+            </div>
+          )}
+
+          <div className="k-order-list">
 
             {visibleBinanceOrderForms.map((order, index) => {
               const selectOptions = binanceOrderableSymbols
@@ -2895,60 +2754,32 @@ export default function Page2() {
                 : ''
 
               return (
-                <div
-                  key={`binance-order-${index}`}
-                  style={{
-                    border: '1px solid #16253a',
-                    borderRadius: '16px',
-                    padding: '16px',
-                    background: '#010915'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <div key={`binance-order-${index}`} className="k-order-card">
+                  <div className="k-order-card__head">
                     <div>
-                      <p style={{ margin: 0, color: '#f8fafc', fontWeight: 600 }}>Ordre #{index + 1}</p>
-                      <small style={{ color: '#64748b' }}>
+                      <p className="k-section-title">Ordre #{index + 1}</p>
+                      <p className="k-token-tag">
                         {safeSymbol ? `${safeSymbol} → ${pairSymbol}` : 'Choisis un token Binance'}
-                      </small>
+                      </p>
                     </div>
                     <button
+                      type="button"
+                      className="k-ghost"
                       onClick={() => removeBinanceOrderForm(index)}
                       disabled={binanceOrderForms.length === 1}
-                      style={{
-                        border: '1px solid #ef4444',
-                        borderRadius: '10px',
-                        padding: '6px 12px',
-                        background: binanceOrderForms.length === 1 ? '#1e293b' : '#ef444433',
-                        color: '#fecaca',
-                        cursor: binanceOrderForms.length === 1 ? 'not-allowed' : 'pointer'
-                      }}
                     >
                       Retirer
                     </button>
                   </div>
 
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                      gap: '12px'
-                    }}
-                  >
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Token</label>
+                  <div className="k-form-grid">
+                    <div className="k-field">
+                      <label className="k-label">Token</label>
                       <select
+                        className="k-select"
                         value={safeSymbol}
                         onChange={(e) => updateBinanceOrderField(index, 'symbol', e.target.value)}
                         disabled={!hasBinanceOrderableTokens}
-                        style={{
-                          width: '100%',
-                          marginTop: '4px',
-                          borderRadius: '10px',
-                          padding: '10px',
-                          background: hasBinanceOrderableTokens ? '#071126' : '#1e293b',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b'
-                        }}
                       >
                         <option value="">Sélectionner</option>
                         {selectOptions.map((symbol) => (
@@ -2957,43 +2788,24 @@ export default function Page2() {
                           </option>
                         ))}
                       </select>
+                      <span className="k-field__hint">
+                        {safeSymbol ? `Pair ${pairSymbol}` : 'Choisis un token :binance'}
+                      </span>
                     </div>
 
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Mode</label>
-                      <div
-                        style={{
-                          marginTop: '6px',
-                          borderRadius: '10px',
-                          padding: '12px',
-                          background: '#041226',
-                          border: '1px solid #0f1f35',
-                          color: '#e0f2fe',
-                          fontWeight: 600,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '8px',
-                            height: '8px',
-                            borderRadius: '999px',
-                            background: '#22c55e'
-                          }}
-                        ></span>
-                        Spot Binance • Achat uniquement
+                    <div className="k-field">
+                      <label className="k-label">Mode</label>
+                      <div className="k-pocket-card">
+                        <strong>Spot Binance</strong>
+                        <span>Achat uniquement</span>
                       </div>
-                      <small style={{ color: '#475569' }}>Le bouton Vendre est désactivé sur Ma Cuisine.</small>
+                      <span className="k-field__hint">Le bouton Vendre est désactivé.</span>
                     </div>
 
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille (token)</label>
+                    <div className="k-field">
+                      <label className="k-label">Taille (token)</label>
                       <input
+                        className="k-input"
                         type="text"
                         inputMode="decimal"
                         pattern="[0-9]*[.,]?[0-9]*"
@@ -3001,29 +2813,20 @@ export default function Page2() {
                         onChange={(e) => updateBinanceOrderField(index, 'size', e.target.value)}
                         onBlur={() => finalizeBinanceManualSize(index)}
                         placeholder={DEFAULT_ORDER_SIZE}
-                        style={{
-                          width: '100%',
-                          marginTop: '4px',
-                          borderRadius: '10px',
-                          padding: '10px',
-                          background: '#071126',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b',
-                          fontVariantNumeric: 'tabular-nums'
-                        }}
                       />
-                      <small style={{ color: '#475569' }}>
+                      <span className="k-field__hint">
                         {order.autoSize && safeSymbol
-                          ? `Auto ≈ ${BINANCE_TARGET_NOTIONAL_USDT} USDT de notional`
+                          ? `Auto ≈ ${BINANCE_TARGET_NOTIONAL_USDT} USDT`
                           : 'Exprimé en unités de base'}
-                      </small>
+                      </span>
                     </div>
 
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDT)</label>
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'stretch', marginTop: '4px' }}>
-                        <div style={{ flex: 1 }}>
+                    <div className="k-field">
+                      <label className="k-label">Prix limite (USDT)</label>
+                      <div className="k-price-row">
+                        <div className="k-price-row__input">
                           <input
+                            className="k-input"
                             type="text"
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
@@ -3031,21 +2834,12 @@ export default function Page2() {
                             onChange={(e) => updateBinanceOrderField(index, 'price', e.target.value)}
                             onBlur={() => finalizeBinanceManualPrice(index)}
                             placeholder="Prix marché"
-                            style={{
-                              width: '100%',
-                              borderRadius: '12px',
-                              padding: '12px 14px',
-                              background: '#071126',
-                              color: '#e5e7eb',
-                              border: '1px solid #1e293b',
-                              fontSize: '16px',
-                              fontVariantNumeric: 'tabular-nums'
-                            }}
                           />
                         </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div className="k-price-row__nudge">
                           <button
                             type="button"
+                            className="k-nudge"
                             onClick={(e) => {
                               if (e.detail === 0) {
                                 nudgeBinanceOrderPrice(index, 1)
@@ -3063,18 +2857,6 @@ export default function Page2() {
                             }}
                             onTouchEnd={stopBinanceContinuousNudge}
                             onTouchCancel={stopBinanceContinuousNudge}
-                            style={{
-                              width: '44px',
-                              height: '42px',
-                              borderRadius: '10px',
-                              border: '1px solid #1e293b',
-                              background: '#0f172a',
-                              color: '#e5e7eb',
-                              fontWeight: 700,
-                              fontSize: '18px',
-                              cursor: safeSymbol ? 'pointer' : 'not-allowed',
-                              opacity: safeSymbol ? 1 : 0.5
-                            }}
                             disabled={!safeSymbol}
                             aria-label="Augmenter le prix"
                           >
@@ -3082,6 +2864,7 @@ export default function Page2() {
                           </button>
                           <button
                             type="button"
+                            className="k-nudge"
                             onClick={(e) => {
                               if (e.detail === 0) {
                                 nudgeBinanceOrderPrice(index, -1)
@@ -3099,18 +2882,6 @@ export default function Page2() {
                             }}
                             onTouchEnd={stopBinanceContinuousNudge}
                             onTouchCancel={stopBinanceContinuousNudge}
-                            style={{
-                              width: '44px',
-                              height: '42px',
-                              borderRadius: '10px',
-                              border: '1px solid #1e293b',
-                              background: '#0f172a',
-                              color: '#e5e7eb',
-                              fontWeight: 700,
-                              fontSize: '18px',
-                              cursor: safeSymbol ? 'pointer' : 'not-allowed',
-                              opacity: safeSymbol ? 1 : 0.5
-                            }}
                             disabled={!safeSymbol}
                             aria-label="Réduire le prix"
                           >
@@ -3118,70 +2889,41 @@ export default function Page2() {
                           </button>
                         </div>
                       </div>
-                      <small style={{ color: '#475569' }}>
+                      <span className="k-field__hint">
                         {safeSymbol
                           ? livePriceDisplay
                             ? (
-                                <span>
+                                <>
                                   Prix marché :{' '}
-                                  <button
-                                    type="button"
-                                    onClick={() => applyBinanceLivePrice(index)}
-                                    style={{
-                                      border: 'none',
-                                      background: 'transparent',
-                                      color: '#38bdf8',
-                                      padding: 0,
-                                      cursor: 'pointer',
-                                      fontWeight: 600,
-                                      textDecoration: 'underline'
-                                    }}
-                                  >
+                                  <button type="button" className="k-subtle-button" onClick={() => applyBinanceLivePrice(index)}>
                                     {livePriceDisplay}
                                   </button>
-                                </span>
+                                </>
                               )
                             : 'Prix Binance live (chargement…)'
                           : 'Choisis un token pour voir le marché'}
-                      </small>
+                      </span>
                     </div>
 
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Notional (USDT)</label>
+                    <div className="k-field">
+                      <label className="k-label">Notional (USDT)</label>
                       <input
+                        className="k-input"
                         type="text"
                         value={notionalDisplay}
                         readOnly
                         placeholder="—"
-                        style={{
-                          width: '100%',
-                          marginTop: '4px',
-                          borderRadius: '10px',
-                          padding: '10px',
-                          background: '#071126',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b',
-                          opacity: notionalUsd != null ? 1 : 0.5,
-                          fontVariantNumeric: 'tabular-nums'
-                        }}
+                        style={{ opacity: notionalUsd != null ? 1 : 0.5 }}
                       />
-                      <small style={{ color: '#475569' }}>Calcul: taille × prix limite</small>
+                      <span className="k-field__hint">Calcul: taille × prix limite</span>
                     </div>
 
-                    <div>
-                      <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Time in Force</label>
+                    <div className="k-field">
+                      <label className="k-label">Time in Force</label>
                       <select
+                        className="k-select"
                         value={(order.timeInForce || BINANCE_DEFAULT_TIME_IN_FORCE).toUpperCase()}
                         onChange={(e) => updateBinanceOrderField(index, 'timeInForce', e.target.value)}
-                        style={{
-                          width: '100%',
-                          marginTop: '4px',
-                          borderRadius: '10px',
-                          padding: '10px',
-                          background: '#071126',
-                          color: '#e5e7eb',
-                          border: '1px solid #1e293b'
-                        }}
                       >
                         <option value="GTC">GTC</option>
                         <option value="IOC">IOC</option>
@@ -3193,38 +2935,18 @@ export default function Page2() {
               )
             })}
 
-            <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+            <div className="k-inline-actions k-inline-actions--wrap">
               <button
+                type="button"
                 onClick={addBinanceOrderForm}
                 disabled={!hasBinanceOrderableTokens || binanceOrderForms.length >= BINANCE_MAX_ORDER_FORMS}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  border: '1px solid #1e293b',
-                  background:
-                    !hasBinanceOrderableTokens || binanceOrderForms.length >= BINANCE_MAX_ORDER_FORMS
-                      ? '#0f172a'
-                      : '#071126',
-                  color: '#e5e7eb',
-                  cursor:
-                    !hasBinanceOrderableTokens || binanceOrderForms.length >= BINANCE_MAX_ORDER_FORMS
-                      ? 'not-allowed'
-                      : 'pointer'
-                }}
               >
                 + Ajouter un ordre
               </button>
               <button
+                type="button"
                 onClick={resetBinanceOrderForms}
                 disabled={!hasBinanceOrderableTokens}
-                style={{
-                  padding: '10px 16px',
-                  borderRadius: '10px',
-                  border: '1px solid #1e293b',
-                  background: hasBinanceOrderableTokens ? '#10243a' : '#0f172a',
-                  color: '#e5e7eb',
-                  cursor: hasBinanceOrderableTokens ? 'pointer' : 'not-allowed'
-                }}
               >
                 Réinitialiser
               </button>
@@ -3232,249 +2954,91 @@ export default function Page2() {
           </div>
 
           {binanceBatchStatus.state !== 'idle' && (
-            <div style={{ marginTop: '16px' }}>
-              <p style={{ color: binanceBatchStatusColor, fontSize: '14px', marginBottom: '8px' }}>
+            <div className="k-log-card" style={{ marginTop: '16px' }}>
+              <p className="k-panel-title" style={{ color: binanceBatchStatusColor }}>
                 {binanceBatchStatus.message}
               </p>
               {binanceBatchStatus.payload && (
-                <pre
-                  style={{
-                    background: '#010711',
-                    color: '#e2e8f0',
-                    padding: '16px',
-                    borderRadius: '12px',
-                    overflowX: 'auto',
-                    border: '1px solid #0f172a',
-                    fontSize: '12px'
-                  }}
-                >
-                  {JSON.stringify(binanceBatchStatus.payload, null, 2)}
-                </pre>
+                <pre>{formatJsonPayload(binanceBatchStatus.payload)}</pre>
               )}
             </div>
           )}
-        </div>
-
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: '10px',
-            marginTop: '18px'
-          }}
-        >
-          {[
-            { label: 'Dernier envoi', status: binanceOrderStatus, color: binanceOrderStatusColor },
-            { label: 'Ordre 100 USDT', status: binanceLargeOrderStatus, color: binanceLargeOrderStatusColor },
-            { label: 'Lecture du carnet', status: binanceFetchStatus, color: binanceFetchStatusColor },
-            { label: 'Cancel all', status: binanceCancelStatus, color: binanceCancelStatusColor },
-            { label: 'Fermer + BNB', status: binanceDustStatus, color: binanceDustStatusColor },
-            { label: 'Batch multi-ordres', status: binanceBatchStatus, color: binanceBatchStatusColor }
-          ].map((item) => (
-            <div
-              key={item.label}
-              style={{
-                border: '1px solid #1d2a3a',
-                borderRadius: '12px',
-                padding: '12px 14px',
-                background: '#010814'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <span
-                  style={{
-                    width: '9px',
-                    height: '9px',
-                    borderRadius: '999px',
-                    background: item.color
-                  }}
-                ></span>
-                <p style={{ color: '#cbd5f5', margin: 0, fontWeight: 600 }}>{item.label}</p>
+        <div className="k-section k-section--tight k-section--spaced">
+          <div className="k-status-grid">
+            {[
+              { label: 'Dernier envoi', status: binanceOrderStatus, color: binanceOrderStatusColor },
+              { label: 'Ordre 100 USDT', status: binanceLargeOrderStatus, color: binanceLargeOrderStatusColor },
+              { label: 'Lecture du carnet', status: binanceFetchStatus, color: binanceFetchStatusColor },
+              { label: 'Cancel all', status: binanceCancelStatus, color: binanceCancelStatusColor },
+              { label: 'Fermer + BNB', status: binanceDustStatus, color: binanceDustStatusColor },
+              { label: 'Batch multi-ordres', status: binanceBatchStatus, color: binanceBatchStatusColor }
+            ].map((item) => (
+              <div key={item.label} className="k-status-card">
+                <div className="k-status-card__label">
+                  <span className="k-status-dot" style={{ background: item.color }}></span>
+                  <p>{item.label}</p>
+                </div>
+                <strong>{item.status.message || 'En attente de commande.'}</strong>
               </div>
-              <p style={{ color: '#94a3b8', margin: 0 }}>
-                {item.status.message || 'En attente de commande.'}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ marginTop: '18px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              flexWrap: 'wrap'
-            }}
-          >
-            <div>
-              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Réponses API Binance (brut)</p>
-              <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
-                Analyse les payloads Firebase uniquement quand tu en as besoin.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowBinanceLogs((prev) => !prev)}
-              style={{
-                padding: '8px 14px',
-                borderRadius: '999px',
-                border: '1px solid #1e293b',
-                background: '#020a16',
-                color: '#cbd5f5',
-                fontSize: '13px',
-                fontWeight: 600
-              }}
-            >
-              {showBinanceLogs ? 'Masquer les logs' : 'Afficher les logs'}
-            </button>
+            ))}
           </div>
 
-          {showBinanceLogs && (
-            <div
-              style={{
-                marginTop: '12px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                gap: '10px'
-              }}
-            >
-              {[
-                { label: 'Envoi ordre market', status: binanceOrderStatus },
-                { label: 'Ordre market 100 USDT', status: binanceLargeOrderStatus },
-                { label: 'Listing des ordres', status: binanceFetchStatus },
-                { label: 'Fermeture / Cancel all', status: binanceCancelStatus },
-                { label: 'Fermeture + BNB', status: binanceDustStatus },
-                { label: 'Batch multi-ordres', status: binanceBatchStatus }
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    border: '1px solid #1d2a3a',
-                    borderRadius: '12px',
-                    padding: '12px',
-                    background: '#020a16',
-                    minHeight: '180px',
-                    display: 'flex',
-                    flexDirection: 'column'
-                  }}
-                >
-                  <div style={{ marginBottom: '6px' }}>
-                    <p style={{ color: '#cbd5f5', margin: 0, fontWeight: 600, fontSize: '14px' }}>{item.label}</p>
-                    <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '12px' }}>
-                      {item.status.message || 'Aucune requête envoyée.'}
-                    </p>
-                  </div>
-                  <pre
-                    style={{
-                      flex: 1,
-                      margin: 0,
-                      borderRadius: '10px',
-                      background: '#010711',
-                      color: '#e2e8f0',
-                      padding: '10px',
-                      fontSize: '11px',
-                      lineHeight: 1.25,
-                      overflowX: 'auto',
-                      overflowY: 'auto',
-                      maxHeight: '140px',
-                      border: '1px solid #0f172a'
-                    }}
-                  >{formatJsonPayload(item.status.payload)}</pre>
-                </div>
-              ))}
+          <div className="k-section">
+            <div className="k-section__actions">
+              <div>
+                <p className="k-panel-title">Réponses API Binance (brut)</p>
+                <p className="k-panel-text">Analyse les payloads Firebase uniquement quand tu en as besoin.</p>
+              </div>
+              <button className="k-toggle-logs" onClick={() => setShowBinanceLogs((prev) => !prev)}>
+                {showBinanceLogs ? 'Masquer les logs' : 'Afficher les logs'}
+              </button>
             </div>
-          )}
+
+            {showBinanceLogs && (
+              <div className="k-log-grid">
+                {logEntries.map((item) => (
+                  <div key={item.label} className="k-log-card">
+                    <div>
+                      <p className="k-panel-title">{item.label}</p>
+                      <p className="k-context-line">{item.status.message || 'Aucune requête envoyée.'}</p>
+                    </div>
+                    <pre>{formatJsonPayload(item.status.payload)}</pre>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div style={{ marginTop: '26px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              flexWrap: 'wrap'
-            }}
-          >
+        </section>
+
+        <section className="k-card k-card--ghost">
+          <div className="k-card__head">
             <div>
-              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>Ordres ouverts Binance</p>
-              <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
-                {binanceFetchStatus.message || 'Clique sur « Lister » pour rafraîchir les données.'}
+              <p className="k-tag">Binance</p>
+              <h3 className="k-card__title">Ordres ouverts</h3>
+              <p className="k-paragraph-light">
+                {binanceFetchStatus.message || 'Clique sur “Lister” pour rafraîchir.'}
               </p>
             </div>
-            <div
-              style={{
-                padding: '6px 12px',
-                borderRadius: '999px',
-                border: '1px solid #1f2d3f',
-                color: '#bae6fd',
-                fontWeight: 600
-              }}
-            >
-              {binanceOpenOrdersList.length} ordre(s)
-            </div>
+            <span className="k-inline-pill blue">{binanceOpenOrdersList.length} ordre(s)</span>
           </div>
 
           {binanceOpenOrdersList.length > 0 ? (
-            <div
-              style={{
-                marginTop: '18px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '14px'
-              }}
-            >
+            <div className="k-order-list">
               {binanceOpenOrdersList.map((order) => {
-                const sideColor = order?.side === 'SELL' ? '#fb7185' : '#34d399'
+                const sideColor = order?.side === 'SELL' ? 'red' : 'green'
                 const orderKey = `${order?.symbol}-${order?.orderId || order?.clientOrderId || order?.time}`
                 return (
-                  <div
-                    key={orderKey}
-                    style={{
-                      border: '1px solid #152337',
-                      borderRadius: '16px',
-                      padding: '16px',
-                      background: '#010915'
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: '12px'
-                      }}
-                    >
+                  <div key={orderKey} className="k-order-card">
+                    <div className="k-order-card__head">
                       <div>
-                        <p style={{ color: '#f8fafc', margin: 0, fontWeight: 600 }}>{order?.symbol || '—'}</p>
-                        <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '13px' }}>
-                          {(order?.type || '—')} • {order?.status || 'NOUVEAU'}
-                        </p>
+                        <p className="k-section-title">{order?.symbol || '—'}</p>
+                        <p className="k-token-tag">{order?.type || '—'} • {order?.status || 'NOUVEAU'}</p>
                       </div>
-                      <span
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '999px',
-                          fontSize: '13px',
-                          fontWeight: 700,
-                          color: sideColor,
-                          background: 'rgba(15, 23, 42, 0.65)',
-                          border: `1px solid ${sideColor}33`
-                        }}
-                      >
-                        {order?.side || '—'}
-                      </span>
+                      <span className={`k-inline-pill ${sideColor}`}>{order?.side || '—'}</span>
                     </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        gap: '12px',
-                        marginTop: '14px'
-                      }}
-                    >
+                    <div className="k-mini-grid">
                       {[
                         {
                           label: 'Quantité',
@@ -3502,135 +3066,53 @@ export default function Page2() {
                           value: order?.orderId || order?.clientOrderId || '—'
                         }
                       ].map((field) => (
-                        <div key={`${orderKey}-${field.label}`}>
-                          <p style={{ color: '#64748b', margin: 0, fontSize: '12px', letterSpacing: '0.03em' }}>
-                            {field.label}
-                          </p>
-                          <p style={{ color: '#e2e8f0', margin: '4px 0 0', fontWeight: 600 }}>{field.value}</p>
+                        <div key={`${orderKey}-${field.label}`} className="k-mini-card">
+                          <span>{field.label}</span>
+                          <strong>{field.value}</strong>
                         </div>
                       ))}
                     </div>
-
-                    <p style={{ color: '#475569', marginTop: '14px', fontSize: '12px' }}>
-                      Dernière mise à jour :{' '}
-                      {formatTimestamp(order?.updateTime ?? order?.time ?? null)}
-                    </p>
+                    <p className="k-note">Dernière MAJ : {formatTimestamp(order?.updateTime ?? order?.time ?? null)}</p>
                   </div>
                 )
               })}
             </div>
           ) : (
-            <div
-              style={{
-                marginTop: '18px',
-                border: '1px dashed #1d2a3a',
-                borderRadius: '14px',
-                padding: '20px',
-                background: 'rgba(1, 10, 22, 0.6)'
-              }}
-            >
-              <p style={{ color: '#94a3b8', margin: 0 }}>
-                Aucun ordre ouvert sur le testnet Binance pour l’instant. Lance un ordre ou rafraîchis le carnet pour mettre à jour.
-              </p>
-            </div>
+            <div className="k-empty">Aucun ordre ouvert sur ce testnet.</div>
           )}
-        </div>
+        </section>
 
-        <div style={{ marginTop: '26px' }}>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              flexWrap: 'wrap'
-            }}
-          >
+        <section className="k-card k-card--ghost">
+          <div className="k-card__head">
             <div>
-              <p style={{ color: '#e5e7eb', margin: 0, fontWeight: 600 }}>
-                Historique récent ({binanceFetchStatus.payload?.historySymbol || BINANCE_PRESET_ORDER.symbol})
-              </p>
-              <p style={{ color: '#94a3b8', margin: '4px 0 0' }}>
-                Les {binanceRecentOrdersList.length || '0'} derniers ordres exécutés / clôturés (limite 20).
+              <p className="k-tag">Historique Binance</p>
+              <h3 className="k-card__title">
+                Ordres récents ({binanceFetchStatus.payload?.historySymbol || BINANCE_PRESET_ORDER.symbol})
+              </h3>
+              <p className="k-paragraph-light">
+                {binanceRecentOrdersList.length || 0} derniers ordres exécutés / clôturés.
               </p>
             </div>
-            <div
-              style={{
-                padding: '6px 12px',
-                borderRadius: '999px',
-                border: '1px solid #1f2d3f',
-                color: '#c4b5fd',
-                fontWeight: 600
-              }}
-            >
-              {binanceRecentOrdersList.length} ordre(s)
-            </div>
+            <span className="k-inline-pill">{binanceRecentOrdersList.length} entrée(s)</span>
           </div>
 
           {binanceRecentOrdersList.length > 0 ? (
-            <div
-              style={{
-                marginTop: '18px',
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-                gap: '14px'
-              }}
-            >
+            <div className="k-order-list">
               {binanceRecentOrdersList.map((order) => {
-                const statusColor = order?.status === 'FILLED' ? '#34d399' : '#fbbf24'
+                const statusColor = order?.status === 'FILLED' ? 'green' : 'blue'
                 const orderKey = `${order?.symbol}-${order?.orderId}-${order?.updateTime}`
                 return (
-                  <div
-                    key={orderKey}
-                    style={{
-                      border: '1px solid #1f2d3f',
-                      borderRadius: '16px',
-                      padding: '16px',
-                      background: '#040a14'
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: '12px'
-                      }}
-                    >
+                  <div key={orderKey} className="k-order-card">
+                    <div className="k-order-card__head">
                       <div>
-                        <p style={{ color: '#f8fafc', margin: 0, fontWeight: 600 }}>{order?.symbol || '—'}</p>
-                        <p style={{ color: '#64748b', margin: '4px 0 0', fontSize: '13px' }}>
-                          {(order?.type || '—')} • ID #{order?.orderId ?? '—'}
-                        </p>
+                        <p className="k-section-title">{order?.symbol || '—'}</p>
+                        <p className="k-token-tag">{order?.type || '—'} • ID #{order?.orderId ?? '—'}</p>
                       </div>
-                      <span
-                        style={{
-                          padding: '4px 10px',
-                          borderRadius: '999px',
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: statusColor,
-                          background: 'rgba(37, 99, 235, 0.08)',
-                          border: `1px solid ${statusColor}33`
-                        }}
-                      >
-                        {order?.status || '—'}
-                      </span>
+                      <span className={`k-inline-pill ${statusColor}`}>{order?.status || '—'}</span>
                     </div>
-
-                    <div
-                      style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                        gap: '12px',
-                        marginTop: '14px'
-                      }}
-                    >
+                    <div className="k-mini-grid">
                       {[
-                        {
-                          label: 'Côté',
-                          value: order?.side || '—'
-                        },
+                        { label: 'Côté', value: order?.side || '—' },
                         {
                           label: 'Quantité',
                           value: formatNumericString(order?.origQty ?? '0', {
@@ -3653,845 +3135,511 @@ export default function Page2() {
                           })
                         }
                       ].map((field) => (
-                        <div key={`${orderKey}-${field.label}`}>
-                          <p style={{ color: '#64748b', margin: 0, fontSize: '12px', letterSpacing: '0.03em' }}>
-                            {field.label}
-                          </p>
-                          <p style={{ color: '#e2e8f0', margin: '4px 0 0', fontWeight: 600 }}>{field.value}</p>
+                        <div key={`${orderKey}-${field.label}`} className="k-mini-card">
+                          <span>{field.label}</span>
+                          <strong>{field.value}</strong>
                         </div>
                       ))}
                     </div>
-
-                    <p style={{ color: '#475569', marginTop: '14px', fontSize: '12px' }}>
-                      Maj : {formatTimestamp(order?.updateTime ?? order?.time ?? null)}
-                    </p>
+                    <p className="k-note">MAJ : {formatTimestamp(order?.updateTime ?? order?.time ?? null)}</p>
                   </div>
                 )
               })}
             </div>
           ) : (
-            <div
-              style={{
-                marginTop: '18px',
-                border: '1px dashed #1d2a3a',
-                borderRadius: '14px',
-                padding: '20px',
-                background: 'rgba(4, 10, 20, 0.6)'
-              }}
-            >
-              <p style={{ color: '#94a3b8', margin: 0 }}>
-                Aucun ordre exécuté n’a été trouvé pour ce symbole sur la période interrogée. Lance un ordre ou change le symbole pour rafraîchir.
-              </p>
+            <div className="k-empty">
+              Aucun ordre exécuté trouvé pour cette paire récemment.
             </div>
           )}
-        </div>
-      </div>
-    </>
-  )
+        </section>
+      </>
+    )
+  }
 
   return (
     <div className="kitchen-page">
       {/* Header */}
-      <div className="kitchen-hero">
-        <p className="kitchen-eyebrow">Studio multi-exchange</p>
-        <h1>
-          Ma Cuisine <span role="img" aria-label="chef">👨🏼‍🍳</span>
-        </h1>
-        <p>Simulateur de portfolio • Optimisez vos allocations</p>
-      </div>
+      <header className="kitchen-hero">
+        <div>
+          <p className="kitchen-eyebrow">Ma cuisine</p>
+          <h1>
+            Tableau de bord minimal <span role="img" aria-label="chef">👨🏼‍🍳</span>
+          </h1>
+          <p className="k-paragraph-light">Hyperliquid &amp; Binance en un seul espace.</p>
+        </div>
+        <div className="kitchen-hero__meta">
+          <span className="kitchen-chip">Tokens {count}/4</span>
+          <span className="kitchen-chip">Budget {heroBudgetLabel} USDC</span>
+          <span className="kitchen-chip">Wallet {heroWalletLabel} USDC</span>
+          <span className="kitchen-chip">MAJ {heroLastSyncLabel}</span>
+        </div>
+      </header>
 
       {renderHyperliquidAccountSummary()}
   {renderBudgetControls()}
 
       {/* Contrôle Binance Spot – rendu via renderBinanceSpotControls() en bas de page */}
 
-      {/* Bouton Hyperliquid Testnet */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid #1e293b'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap'
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-              🧪 Envoyer des ordres Hyperliquid
-            </h3>
-            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Compose jusqu’à 10 ordres limite (token, taille, prix) puis envoie-les vers Hyperliquid en un clic.
-            </p>
-            <p style={{ color: '#64748b', marginTop: '6px', fontSize: '13px' }}>
-              Budget réparti :{' '}
-              <strong style={{ color: '#f8fafc' }}>
-                {formatNumericString(resolvedPortfolioBudgetUsd, { maximumFractionDigits: 2, limitHighValues: true })} USDC
-              </strong>
-              {' '}• {orderableSymbols.length} token{orderableSymbols.length > 1 ? 's' : ''} suivis
-            </p>
+      <section className="k-card">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Hyperliquid</p>
+            <h3 className="k-card__title">Batch ordres limite</h3>
+            <p className="k-paragraph-light">Compose jusqu’à 10 ordres simples, prêts pour le carnet.</p>
           </div>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '12px',
-              justifyContent: 'flex-end'
-            }}
-          >
+          <div className="k-card__actions">
             <button
+              className="k-cta"
               onClick={handlePortfolioAutoOrder}
               disabled={orderStatus.state === 'loading' || !canUsePortfolioAutoOrder}
-              style={{
-                padding: '12px 18px',
-                borderRadius: '10px',
-                border: 'none',
-                background:
-                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder
-                    ? '#1b2636'
-                    : 'linear-gradient(135deg, #22c55e, #16a34a)',
-                color: '#ecfdf5',
-                fontWeight: 600,
-                cursor:
-                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder ? 'not-allowed' : 'pointer',
-                boxShadow:
-                  orderStatus.state === 'loading' || !canUsePortfolioAutoOrder
-                    ? 'none'
-                    : '0 8px 24px rgba(34,197,94,0.35)'
-              }}
-              title={canUsePortfolioAutoOrder ? 'Acheter automatiquement selon les pourcentages du portfolio' : 'Ajoute des tokens et un budget suffisant (≥ 15 USDC par token)'}
+              title={canUsePortfolioAutoOrder ? 'Répartition automatique' : 'Ajoute un budget ≥ 15 USDC par token'}
             >
-              {orderStatus.state === 'loading'
-                ? 'Préparation…'
-                : 'Acheter via la répartition'}
+              {orderStatus.state === 'loading' ? 'Préparation…' : 'Auto-répartition'}
             </button>
             <button
+              className="k-ghost"
               onClick={sendTestOrder}
               disabled={orderStatus.state === 'loading' || !hasOrderableTokens}
-              style={{
-                padding: '12px 20px',
-                borderRadius: '10px',
-                border: 'none',
-                background:
-                  orderStatus.state === 'loading'
-                    ? '#475569'
-                    : hasOrderableTokens
-                      ? '#3b82f6'
-                      : '#334155',
-                color: 'white',
-                fontWeight: '600',
-                cursor:
-                  orderStatus.state === 'loading' || !hasOrderableTokens ? 'not-allowed' : 'pointer',
-                transition: 'background 0.2s'
-              }}
             >
               {orderStatus.state === 'loading'
                 ? 'Envoi…'
                 : hasOrderableTokens
-                  ? `Placer ${orderForms.length} ordre(s)`
-                  : 'Ajoute des tokens avant'}
+                  ? `Envoyer ${orderForms.length}`
+                  : 'Ajoute des tokens'}
             </button>
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '20px' }}>
-          {!hasOrderableTokens && (
-            <div
-              style={{
-                background: '#1e293b',
-                borderRadius: '12px',
-                padding: '16px',
-                border: '1px dashed #334155',
-                color: '#cbd5f5',
-                fontSize: '14px'
-              }}
-            >
-              🧺 Ajoute des tokens dans ton panier depuis « Épicerie fine » pour pouvoir sélectionner des ordres ici.
-            </div>
-          )}
-          {visibleOrderForms.map((order, index) => {
-            const tokenConfig = order.symbol ? getTokenConfig(order.symbol) : null
-            const selectOptions = orderableSymbols
-            const safeSymbol = isSymbolAllowed(order.symbol) ? order.symbol : ''
-            const displayedPrice = order.autoPrice && safeSymbol
-              ? computeAutoLimitPrice(safeSymbol) || ''
-              : order.price
-            const livePriceNumber = safeSymbol ? tokenPriceMap?.[safeSymbol] : null
-            const livePriceDisplay = Number.isFinite(livePriceNumber)
-              ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true, limitHighValues: true })} USDC`
-              : null
-            const sizeNumber = parseDecimalValue(order.size)
-            const priceNumber = parseDecimalValue(displayedPrice)
-            const notionalUsd = Number.isFinite(sizeNumber) && Number.isFinite(priceNumber)
-              ? sizeNumber * priceNumber
-              : null
-            const notionalDisplay = notionalUsd != null
-              ? formatNumericString(notionalUsd, { maximumFractionDigits: 2, preserveTinyValues: true, limitHighValues: true })
-              : ''
+        <div className="k-inline-actions k-inline-actions--wrap">
+          <span className="k-inline-pill">{orderableSymbols.length} token(s)</span>
+          <span className="k-inline-pill">Budget {formatNumericString(resolvedPortfolioBudgetUsd, { maximumFractionDigits: 0, limitHighValues: true })} USDC</span>
+        </div>
 
-            return (
-              <div
-                key={`order-form-${index}`}
-                style={{
-                  background: '#020617',
-                  border: '1px solid #1e293b',
-                  borderRadius: '14px',
-                  padding: '16px'
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', alignItems: 'center' }}>
-                  <div>
-                    <p style={{ margin: 0, color: '#e5e7eb', fontWeight: 600 }}>Ordre #{index + 1}</p>
-                    <span style={{ color: '#94a3b8', fontSize: '12px' }}>
-                      {tokenConfig ? tokenConfig.name : 'Sélectionne un token'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => removeOrderForm(index)}
-                    disabled={orderForms.length === 1}
-                    style={{
-                      border: '1px solid #ef4444',
-                      background: orderForms.length === 1 ? '#1e293b' : '#ef444433',
-                      color: '#fca5a5',
-                      padding: '6px 12px',
-                      borderRadius: '8px',
-                      cursor: orderForms.length === 1 ? 'not-allowed' : 'pointer'
-                    }}
-                  >
-                    Retirer
-                  </button>
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                    gap: '12px'
-                  }}
-                >
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Token</label>
-                    <select
-                      value={safeSymbol}
-                      onChange={(e) => updateOrderField(index, 'symbol', e.target.value)}
-                      disabled={!hasOrderableTokens}
-                      style={{
-                        width: '100%',
-                        marginTop: '4px',
-                        borderRadius: '10px',
-                        padding: '10px',
-                        background: hasOrderableTokens ? '#0f172a' : '#1e293b',
-                        color: '#e5e7eb',
-                        border: '1px solid #1e293b',
-                        cursor: hasOrderableTokens ? 'pointer' : 'not-allowed'
-                      }}
-                    >
-                      <option value="">Sélectionner</option>
-                      {selectOptions.map((symbol) => (
-                        <option key={`${symbol}-${index}`} value={symbol}>
-                          {symbol} • {getTokenConfig(symbol)?.name || 'Hyperliquid'}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Mode</label>
-                    <div
-                      style={{
-                        marginTop: '6px',
-                        borderRadius: '10px',
-                        padding: '12px',
-                        background: '#052332',
-                        border: '1px solid #113448',
-                        color: '#e0f2fe',
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                      }}
-                    >
-                      <span
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '999px',
-                          background: '#22c55e'
-                        }}
-                      ></span>
-                      Spot uniquement • Achat
+        {!hasOrderableTokens ? (
+          <div className="k-empty">Ajoute des tokens depuis l’Épicerie fine pour activer cette section.</div>
+        ) : (
+          <div className="k-order-list">
+            {visibleOrderForms.map((order, index) => {
+              const tokenConfig = order.symbol ? getTokenConfig(order.symbol) : null
+              const selectOptions = orderableSymbols
+              const safeSymbol = isSymbolAllowed(order.symbol) ? order.symbol : ''
+              const displayedPrice = order.autoPrice && safeSymbol
+                ? computeAutoLimitPrice(safeSymbol) || ''
+                : order.price
+              const livePriceNumber = safeSymbol ? tokenPriceMap?.[safeSymbol] : null
+              const livePriceDisplay = Number.isFinite(livePriceNumber)
+                ? `${formatNumericString(livePriceNumber, { maximumFractionDigits: getPriceDecimals(safeSymbol), preserveTinyValues: true, limitHighValues: true })} USDC`
+                : null
+              const sizeNumber = parseDecimalValue(order.size)
+              const priceNumber = parseDecimalValue(displayedPrice)
+              const notionalUsd = Number.isFinite(sizeNumber) && Number.isFinite(priceNumber)
+                ? sizeNumber * priceNumber
+                : null
+              const notionalDisplay = notionalUsd != null
+                ? formatNumericString(notionalUsd, { maximumFractionDigits: 2, preserveTinyValues: true, limitHighValues: true })
+                : ''
+
+              return (
+                <div key={`order-form-${index}`} className="k-order-card">
+                  <div className="k-order-card__head">
+                    <div>
+                      <p className="k-section-title">Ordre #{index + 1}</p>
+                      <p className="k-token-tag">{tokenConfig ? tokenConfig.name : 'Sélectionne un token'}</p>
                     </div>
-                    <small style={{ color: '#475569' }}>La vente de spot est désactivée dans Ma Cuisine.</small>
-                  </div>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Taille</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      pattern="[0-9]*[.,]?[0-9]*"
-                      value={order.size}
-                      onChange={(e) => updateOrderField(index, 'size', e.target.value)}
-                      onBlur={() => finalizeManualSize(index)}
-                      placeholder={DEFAULT_ORDER_SIZE}
-                      style={{
-                        width: '100%',
-                        marginTop: '4px',
-                        borderRadius: '10px',
-                        padding: '10px',
-                        background: '#0f172a',
-                        color: '#e5e7eb',
-                        border: '1px solid #1e293b',
-                        fontVariantNumeric: 'tabular-nums'
-                      }}
-                    />
-                    <small style={{ color: '#475569' }}>
-                      {order.autoSize && safeSymbol
-                        ? `Auto: ~${MIN_ORDER_NOTIONAL_USDC} USDC notional`
-                        : 'Exprimé en unités de token'}
-                    </small>
-                  </div>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Prix limite (USDC)</label>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '10px',
-                        alignItems: 'stretch',
-                        marginTop: '4px'
-                      }}
+                    <button
+                      className="k-ghost"
+                      onClick={() => removeOrderForm(index)}
+                      disabled={orderForms.length === 1}
                     >
-                      <div style={{ flex: 1 }}>
+                      Retirer
+                    </button>
+                  </div>
+
+                  <div className="k-form-grid">
+                    <div className="k-field">
+                      <label className="k-label">Token</label>
+                      <select
+                        className="k-select"
+                        value={safeSymbol}
+                        onChange={(e) => updateOrderField(index, 'symbol', e.target.value)}
+                        disabled={!hasOrderableTokens}
+                      >
+                        <option value="">Sélectionner</option>
+                        {selectOptions.map((symbol) => (
+                          <option key={`${symbol}-${index}`} value={symbol}>
+                            {symbol} • {getTokenConfig(symbol)?.name || 'Hyperliquid'}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="k-field">
+                      <label className="k-label">Taille</label>
+                      <input
+                        className="k-input"
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.,]?[0-9]*"
+                        value={order.size}
+                        onChange={(e) => updateOrderField(index, 'size', e.target.value)}
+                        onBlur={() => finalizeManualSize(index)}
+                        placeholder={DEFAULT_ORDER_SIZE}
+                      />
+                      <span className="k-field__hint">
+                        {order.autoSize && safeSymbol
+                          ? `Auto ≈ ${MIN_ORDER_NOTIONAL_USDC} USDC`
+                          : 'Unités du token'}
+                      </span>
+                    </div>
+                    <div className="k-field">
+                      <label className="k-label">Prix limite</label>
+                      <div className="k-inline-actions">
                         <input
+                          className="k-input"
                           type="text"
                           inputMode="decimal"
                           pattern="[0-9]*[.,]?[0-9]*"
                           value={displayedPrice}
                           onChange={(e) => updateOrderField(index, 'price', e.target.value)}
                           onBlur={() => finalizeManualPrice(index)}
-                          placeholder="0,0046"
-                          style={{
-                            width: '100%',
-                            borderRadius: '12px',
-                            padding: '12px 14px',
-                            background: '#0f172a',
-                            color: '#e5e7eb',
-                            border: '1px solid #1e293b',
-                            fontSize: '16px',
-                            fontVariantNumeric: 'tabular-nums'
-                          }}
+                          placeholder="0,00"
                         />
+                        <div className="k-inline-actions">
+                          <button
+                            type="button"
+                            className="k-nudge"
+                            onClick={(e) => {
+                              if (e.detail === 0) {
+                                nudgeOrderPrice(index, 1)
+                              }
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              startContinuousNudge(index, 1)
+                            }}
+                            onMouseUp={stopContinuousNudge}
+                            onMouseLeave={stopContinuousNudge}
+                            onTouchStart={(e) => {
+                              e.preventDefault()
+                              startContinuousNudge(index, 1)
+                            }}
+                            onTouchEnd={stopContinuousNudge}
+                            onTouchCancel={stopContinuousNudge}
+                            disabled={!safeSymbol}
+                          >
+                            +
+                          </button>
+                          <button
+                            type="button"
+                            className="k-nudge"
+                            onClick={(e) => {
+                              if (e.detail === 0) {
+                                nudgeOrderPrice(index, -1)
+                              }
+                            }}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              startContinuousNudge(index, -1)
+                            }}
+                            onMouseUp={stopContinuousNudge}
+                            onMouseLeave={stopContinuousNudge}
+                            onTouchStart={(e) => {
+                              e.preventDefault()
+                              startContinuousNudge(index, -1)
+                            }}
+                            onTouchEnd={stopContinuousNudge}
+                            onTouchCancel={stopContinuousNudge}
+                            disabled={!safeSymbol}
+                          >
+                            −
+                          </button>
+                        </div>
                       </div>
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '8px'
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            if (e.detail === 0) {
-                              nudgeOrderPrice(index, 1)
-                            }
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            startContinuousNudge(index, 1)
-                          }}
-                          onMouseUp={stopContinuousNudge}
-                          onMouseLeave={stopContinuousNudge}
-                          onTouchStart={(e) => {
-                            e.preventDefault()
-                            startContinuousNudge(index, 1)
-                          }}
-                          onTouchEnd={stopContinuousNudge}
-                          onTouchCancel={stopContinuousNudge}
-                          style={{
-                            width: '48px',
-                            height: '42px',
-                            borderRadius: '10px',
-                            border: '1px solid #1e293b',
-                            background: '#1d293b',
-                            color: '#e5e7eb',
-                            fontWeight: 700,
-                            fontSize: '18px',
-                            cursor: safeSymbol ? 'pointer' : 'not-allowed',
-                            opacity: safeSymbol ? 1 : 0.5
-                          }}
-                          disabled={!safeSymbol}
-                          aria-label="Augmenter le prix"
-                        >
-                          +
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            if (e.detail === 0) {
-                              nudgeOrderPrice(index, -1)
-                            }
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            startContinuousNudge(index, -1)
-                          }}
-                          onMouseUp={stopContinuousNudge}
-                          onMouseLeave={stopContinuousNudge}
-                          onTouchStart={(e) => {
-                            e.preventDefault()
-                            startContinuousNudge(index, -1)
-                          }}
-                          onTouchEnd={stopContinuousNudge}
-                          onTouchCancel={stopContinuousNudge}
-                          style={{
-                            width: '48px',
-                            height: '42px',
-                            borderRadius: '10px',
-                            border: '1px solid #1e293b',
-                            background: '#1d293b',
-                            color: '#e5e7eb',
-                            fontWeight: 700,
-                            fontSize: '18px',
-                            cursor: safeSymbol ? 'pointer' : 'not-allowed',
-                            opacity: safeSymbol ? 1 : 0.5
-                          }}
-                          disabled={!safeSymbol}
-                          aria-label="Diminuer le prix"
-                        >
-                          −
-                        </button>
-                      </div>
-                    </div>
-                    <small style={{ color: '#475569' }}>
-                      {safeSymbol
-                        ? livePriceDisplay
+                      <span className="k-field__hint">
+                        {safeSymbol && livePriceDisplay
                           ? (
-                              <span>
-                                Prix marché :{' '}
-                                <button
-                                  type="button"
-                                  onClick={() => applyLivePrice(index)}
-                                  style={{
-                                    border: 'none',
-                                    background: 'transparent',
-                                    color: '#f87171',
-                                    padding: 0,
-                                    cursor: 'pointer',
-                                    fontWeight: 600,
-                                    textDecoration: 'underline'
-                                  }}
-                                >
-                                  {livePriceDisplay}
-                                </button>
-                                {' '}• clic = revenir au marché (auto)
-                              </span>
+                              <button type="button" className="k-subtle-button" onClick={() => applyLivePrice(index)}>
+                                Revenir au marché ({livePriceDisplay})
+                              </button>
                             )
-                          : 'Prix Hyperliquid live (chargement…)'
-                        : 'Sélectionne un token pour voir le prix marché'}
-                    </small>
-                  </div>
-                  <div>
-                    <label style={{ color: '#94a3b8', fontSize: '12px', textTransform: 'uppercase' }}>Valeur position (USDC)</label>
-                    <input
-                      type="text"
-                      value={notionalDisplay}
-                      readOnly
-                      placeholder="—"
-                      style={{
-                        width: '100%',
-                        marginTop: '4px',
-                        borderRadius: '10px',
-                        padding: '10px',
-                        background: '#0f172a',
-                        color: '#e5e7eb',
-                        border: '1px solid #1e293b',
-                        opacity: notionalUsd != null ? 1 : 0.5,
-                        fontVariantNumeric: 'tabular-nums'
-                      }}
-                    />
-                    <small style={{ color: '#475569' }}>
-                      Calcul: taille × prix limite
-                    </small>
+                          : 'Prix marché en cours'}
+                      </span>
+                    </div>
+                    <div className="k-field">
+                      <label className="k-label">Valeur</label>
+                      <input className="k-input" type="text" value={notionalDisplay} readOnly placeholder="—" />
+                      <span className="k-field__hint">Taille × prix</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          })}
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-            {/* Boutons d'ajout / reset */}
-            <button
-              onClick={addOrderForm}
-              disabled={!hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #334155',
-                background:
-                  !hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS ? '#1e293b' : '#0f172a',
-                color: '#e5e7eb',
-                cursor:
-                  !hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS ? 'not-allowed' : 'pointer'
-              }}
-            >
-              + Ajouter un ordre
-            </button>
-            <button
-              onClick={resetOrderForms}
-              disabled={!hasOrderableTokens}
-              style={{
-                padding: '10px 16px',
-                borderRadius: '10px',
-                border: '1px solid #1e293b',
-                background: !hasOrderableTokens ? '#0f172a' : '#1e293b',
-                color: '#e5e7eb'
-              }}
-            >
-              Réinitialiser
-            </button>
-          </div>
-        </div>
-
-        {orderStatus.state !== 'idle' && (
-          <div style={{ marginTop: '16px' }}>
-            <p style={{ color: orderStatusColor, fontSize: '14px', marginBottom: '8px' }}>
-              {orderStatus.message}
-            </p>
-            {orderStatus.payload && (
-              <pre
-                style={{
-                  background: '#020617',
-                  color: '#e2e8f0',
-                  padding: '16px',
-                  borderRadius: '12px',
-                  overflowX: 'auto',
-                  border: '1px solid #1e293b',
-                  fontSize: '12px'
-                }}
-              >
-                {JSON.stringify(orderStatus.payload, null, 2)}
-              </pre>
-            )}
+              )
+            })}
           </div>
         )}
-      </div>
 
-      {/* Liste des ordres ouverts Hyperliquid */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #0a0f1e 100%)',
-          borderRadius: '16px',
-          padding: '24px',
-          marginBottom: '24px',
-          border: '1px solid #1e293b'
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '16px',
-            flexWrap: 'wrap'
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <h3 style={{ color: '#e5e7eb', margin: 0, fontSize: '18px', fontWeight: 'bold' }}>
-              📋 Lister mes ordres ouverts
-            </h3>
-            <p style={{ color: '#94a3b8', marginTop: '8px', marginBottom: 0 }}>
-              Vérifie en direct les ordres encore en carnet ET les positions actives sur Hyperliquid.
-            </p>
-          </div>
+        <div className="k-card__actions">
           <button
-            onClick={loadOpenOrders}
-            disabled={openOrdersStatus.state === 'loading'}
-            style={{
-              padding: '12px 20px',
-              borderRadius: '10px',
-              border: 'none',
-              background: openOrdersStatus.state === 'loading' ? '#475569' : '#6366f1',
-              color: 'white',
-              fontWeight: '600',
-              cursor: openOrdersStatus.state === 'loading' ? 'not-allowed' : 'pointer',
-              transition: 'background 0.2s'
-            }}
+            className="k-ghost"
+            onClick={addOrderForm}
+            disabled={!hasOrderableTokens || orderForms.length >= MAX_ORDER_FORMS}
           >
-            {openOrdersStatus.state === 'loading' ? 'Chargement…' : 'Lister ordres & positions'}
+            + Ajouter un ordre
           </button>
-        </div>
-
-        {openOrdersStatus.state !== 'idle' && (
-          <div style={{ marginTop: '16px' }}>
-            <p style={{ color: openOrdersStatusColor, fontSize: '14px', marginBottom: '8px' }}>
-              {openOrdersStatus.message}
-            </p>
-            {openOrdersStatus.payload && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <h4 style={{ color: '#e5e7eb', margin: '0 0 8px', fontSize: '15px' }}>Ordres en carnet</h4>
-                  {openOrdersList.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {openOrdersList.map((order) => (
-                        <div
-                          key={order.oid}
-                          style={{
-                            background: '#020617',
-                            border: '1px solid #1e293b',
-                            borderRadius: '12px',
-                            padding: '16px'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <span style={{ color: '#f8fafc', fontWeight: '600' }}>{order.coin}</span>
-                            <span
-                              style={{
-                                color: order.side === 'buy' ? '#22c55e' : '#f87171',
-                                fontWeight: '600'
-                              }}
-                            >
-                              {order.side === 'buy' ? 'Long (achat)' : 'Short (vente)'}
-                            </span>
-                          </div>
-                          <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
-                            <div>
-                              Prix limite : <strong>{formatNumericString(order.limitPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true })} USDC</strong>
-                            </div>
-                            <div>
-                              Taille restante : <strong>{formatNumericString(order.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> (initiale {formatNumericString(order.origSz, { maximumFractionDigits: 5, preserveTinyValues: true })})
-                            </div>
-                            <div>
-                              Timestamp : <strong>{formatTimestamp(order.timestamp)}</strong>
-                            </div>
-                            <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>
-                              OID #{order.oid} {order.reduceOnly ? '• Reduce only' : ''}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        background: '#020617',
-                        border: '1px dashed #1e293b',
-                        borderRadius: '12px',
-                        padding: '16px',
-                        color: '#cbd5f5',
-                        fontSize: '13px'
-                      }}
-                    >
-                      Aucun ordre ouvert sur ce compte Hyperliquid.
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <h4 style={{ color: '#e5e7eb', margin: '0 0 8px', fontSize: '15px' }}>Positions actives</h4>
-                  {openPositionsList.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      {openPositionsList.map((position, index) => (
-                        <div
-                          key={`${position.coin}-${position.entryTime || index}`}
-                          style={{
-                            background: '#020617',
-                            border: '1px solid #1e293b',
-                            borderRadius: '12px',
-                            padding: '16px'
-                          }}
-                        >
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                            <span style={{ color: '#f8fafc', fontWeight: '600' }}>{position.coin}</span>
-                            <span
-                              style={{
-                                color: position.side === 'long' ? '#22c55e' : '#f87171',
-                                fontWeight: '600'
-                              }}
-                            >
-                              {position.side === 'long' ? 'Long (achat)' : 'Short (vente)'}
-                            </span>
-                          </div>
-                          <div style={{ color: '#cbd5f5', fontSize: '13px', lineHeight: 1.6 }}>
-                            <div>
-                              Taille : <strong>{formatNumericString(position.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong> token(s)
-                            </div>
-                            <div>
-                              Prix d'entrée : <strong>{formatNumericString(position.entryPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
-                            </div>
-                            <div>
-                              Mark actuel : <strong>{formatNumericString(position.markPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
-                            </div>
-                            <div>
-                              Liquidation : <strong>{formatNumericString(position.liqPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
-                            </div>
-                            <div>
-                              Levier estimé : <strong>{position.leverage ? `${position.leverage}x` : '—'}</strong>
-                            </div>
-                            {position.entryTime && (
-                              <div>
-                                Entrée le : <strong>{formatTimestamp(position.entryTime)}</strong>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        background: '#020617',
-                        border: '1px dashed #1e293b',
-                        borderRadius: '12px',
-                        padding: '16px',
-                        color: '#cbd5f5',
-                        fontSize: '13px'
-                      }}
-                    >
-                      Aucune position ouverte pour le moment.
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Résultats */}
-      <PortfolioResults results={results} />
-
-      {/* Faders de poids */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        borderRadius: '16px',
-        padding: '24px',
-        marginBottom: '24px',
-        border: '1px solid #334155'
-      }}>
-        <div style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          marginBottom: '20px'
-        }}>
-          <h3 style={{ color: '#e5e7eb', fontSize: '18px', fontWeight: 'bold', margin: 0 }}>
-            🎚️ Répartition Portfolio
-          </h3>
           <button
-            onClick={resetWeights}
-            style={{
-              padding: '8px 16px',
-              background: '#334155',
-              color: '#e5e7eb',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '600',
-              transition: 'background 0.2s'
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = '#475569'}
-            onMouseLeave={(e) => e.currentTarget.style.background = '#334155'}
+            className="k-ghost"
+            onClick={resetOrderForms}
+            disabled={!hasOrderableTokens}
           >
             Réinitialiser
           </button>
         </div>
 
-        {/* Sliders dynamiques (branchés sur la bonne source par symbole) */}
-        {portfolioTokensData.map(token => (
-          <TokenWeightRow
-            key={token.symbol}
-            symbol={token.symbol}
-            source={token.source}
-            weight={weights[token.symbol] || 0}
-            onChange={(newWeight) => setWeight(token.symbol, newWeight)}
-            color={token.color}
-          />
-        ))}
+        {orderStatus.state !== 'idle' && (
+          <div className={`k-alert ${orderStatus.state === 'error' ? 'k-alert--danger' : ''}`}>
+            {orderStatus.message}
+          </div>
+        )}
 
-        {/* Total */}
-        <div style={{
-          marginTop: '16px',
-          paddingTop: '16px',
-          borderTop: '1px solid #334155',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <span style={{ color: '#94a3b8', fontSize: '14px', fontWeight: '600' }}>
-            Total Allocation
-          </span>
-          <span style={{ 
-            color: '#22c55e', 
-            fontSize: '18px', 
-            fontWeight: 'bold' 
-          }}>
-            100.0% ✓
+        {orderStatus.payload && (
+          <div className="k-log-card">
+            <pre>{JSON.stringify(orderStatus.payload, null, 2)}</pre>
+          </div>
+        )}
+      </section>
+
+      {/* Liste des ordres ouverts Hyperliquid */}
+      <section className="k-card k-card--ghost">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Hyperliquid</p>
+            <h3 className="k-card__title">Ordres & positions</h3>
+            <p className="k-paragraph-light">Vue carnet + perp, rafraîchie à la demande.</p>
+          </div>
+          <button
+            className="k-cta"
+            onClick={loadOpenOrders}
+            disabled={openOrdersStatus.state === 'loading'}
+          >
+            {openOrdersStatus.state === 'loading' ? 'Chargement…' : 'Rafraîchir'}
+          </button>
+        </div>
+
+        {openOrdersStatus.state !== 'idle' && (
+          <div className={`k-alert ${openOrdersStatus.state === 'error' ? 'k-alert--danger' : ''}`}>
+            {openOrdersStatus.message}
+          </div>
+        )}
+
+        <div className="k-grid-split">
+          <div className="k-stack">
+            <p className="k-section-title">Ordres en carnet</p>
+            {openOrdersList.length > 0 ? (
+              <div className="k-stack">
+                {openOrdersList.map((order) => (
+                  <div key={order.oid} className="k-order-card">
+                    <div className="k-order-card__head">
+                      <div>
+                        <p className="k-section-title">{order.coin}</p>
+                        <p className="k-token-tag">OID #{order.oid}</p>
+                      </div>
+                      <span className={`k-inline-pill ${order.side === 'buy' ? 'green' : 'red'}`}>
+                        {order.side === 'buy' ? 'Long' : 'Short'}
+                      </span>
+                    </div>
+                    <div className="k-mini-grid">
+                      <div className="k-mini-card">
+                        <span>Prix limite</span>
+                        <strong>{formatNumericString(order.limitPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true })} USDC</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Restant</span>
+                        <strong>{formatNumericString(order.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Initial</span>
+                        <strong>{formatNumericString(order.origSz, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Horodatage</span>
+                        <strong>{formatTimestamp(order.timestamp)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="k-empty">Aucun ordre ouvert.</div>
+            )}
+          </div>
+
+          <div className="k-stack">
+            <p className="k-section-title">Positions actives</p>
+            {openPositionsList.length > 0 ? (
+              <div className="k-stack">
+                {openPositionsList.map((position, index) => (
+                  <div key={`${position.coin}-${position.entryTime || index}`} className="k-order-card">
+                    <div className="k-order-card__head">
+                      <div>
+                        <p className="k-section-title">{position.coin}</p>
+                        {position.entryTime && <p className="k-token-tag">Entrée {formatTimestamp(position.entryTime)}</p>}
+                      </div>
+                      <span className={`k-inline-pill ${position.side === 'long' ? 'green' : 'red'}`}>
+                        {position.side === 'long' ? 'Long' : 'Short'}
+                      </span>
+                    </div>
+                    <div className="k-mini-grid">
+                      <div className="k-mini-card">
+                        <span>Taille</span>
+                        <strong>{formatNumericString(position.size, { maximumFractionDigits: 5, preserveTinyValues: true })}</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Entrée</span>
+                        <strong>{formatNumericString(position.entryPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Mark</span>
+                        <strong>{formatNumericString(position.markPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Liquidation</span>
+                        <strong>{formatNumericString(position.liqPx, { maximumFractionDigits: 4, preserveTinyValues: true, limitHighValues: true }) || '—'} USDC</strong>
+                      </div>
+                      <div className="k-mini-card">
+                        <span>Levier</span>
+                        <strong>{position.leverage ? `${position.leverage}x` : '—'}</strong>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="k-empty">Aucune position ouverte.</div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="k-card k-card--ghost">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Backtests</p>
+            <h3 className="k-card__title">Résultats express</h3>
+          </div>
+        </div>
+        <PortfolioResults results={results} />
+      </section>
+
+      <section className="k-card k-card--accent">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Vision 5 / 10 / 15 / 20 jours</p>
+            <h3 className="k-card__title">📈 Historique multi-jours Hyperliquid</h3>
+            <p className="k-paragraph-light">
+              Compare la trajectoire réelle de chaque token à ton portefeuille pondéré.
+            </p>
+          </div>
+        </div>
+        <div className="k-metrics">
+          <div className="k-metric">
+            <span>Budget simulé</span>
+            <strong>
+              {formatNumericString(projectionCapital, {
+                maximumFractionDigits: 0,
+                limitHighValues: true
+              })} USDC
+            </strong>
+          </div>
+          <div className="k-metric">
+            <span>Tokens suivis</span>
+            <strong>{selectedSymbols.length || 0}</strong>
+          </div>
+          <div className="k-metric">
+            <span>Mise à jour</span>
+            <strong>{historicalUpdatedAt ? formatTimestamp(historicalUpdatedAt) : '—'}</strong>
+          </div>
+        </div>
+        {historicalLoading && <p className="k-note">⏳ Synchronisation Hyperliquid…</p>}
+        {!historicalLoading && historicalError && (
+          <p className="k-note k-note--error">{historicalError.message || 'Historique indisponible'}</p>
+        )}
+        <KitchenPerformanceChart
+          tokensData={portfolioTokensData}
+          weights={weights}
+          capital={projectionCapital}
+          historyData={historicalReturns}
+        />
+      </section>
+
+      <section className="k-card">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Répartition</p>
+            <h3 className="k-card__title">🎚️ Poids du portfolio</h3>
+          </div>
+          <button className="k-ghost" onClick={resetWeights}>
+            Réinitialiser
+          </button>
+        </div>
+
+        {portfolioTokensData.length ? (
+          <div className="k-stack">
+            {portfolioTokensData.map((token) => (
+              <TokenWeightRow
+                key={token.symbol}
+                symbol={token.symbol}
+                source={token.source}
+                weight={weights[token.symbol] || 0}
+                onChange={(newWeight) => setWeight(token.symbol, newWeight)}
+                color={token.color}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="k-empty">Ajoute un token pour régler les sliders.</div>
+        )}
+
+        <div className="k-card__footer">
+          <span>Total allocation</span>
+          <span className={`k-inline-pill ${isAllocationBalanced ? 'green' : 'red'}`}>
+            {totalWeightDisplay}
           </span>
         </div>
-      </div>
+      </section>
 
-      {/* Graphique circulaire (Pie Chart) */}
-      <div style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
-        borderRadius: '16px',
-        padding: '24px',
-        marginBottom: '32px',
-        border: '1px solid #334155'
-      }}>
-        <h3 style={{ 
-          color: '#e5e7eb', 
-          fontSize: '18px', 
-          fontWeight: 'bold', 
-          margin: 0,
-          marginBottom: '24px'
-        }}>
-          📊 Visualisation Portfolio
-        </h3>
-        
+      <section className="k-card k-card--ghost">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Visuel</p>
+            <h3 className="k-card__title">📊 Vue d’ensemble</h3>
+            <p className="k-paragraph-light">La part de chaque token selon la pondération actuelle.</p>
+          </div>
+        </div>
         <PortfolioChart weights={weights} tokensData={portfolioTokensData} />
-      </div>
+      </section>
 
-      {/* Tokens sélectionnés (ancien affichage) */}
-      {selectedTokens.length === 0 ? (
-        <div style={{
-          padding: 40,
-          textAlign: 'center',
-          color: '#64748b',
-          background: '#1e293b',
-          borderRadius: 12,
-          border: '2px dashed #334155'
-        }}>
-          <p style={{ fontSize: 16, marginBottom: 8 }}>Aucun token sélectionné</p>
-          <p style={{ fontSize: 14 }}>
-            {user
-              ? 'Glissez des tokens depuis "Épicerie fine" pour les suivre ici'
-              : 'Connectez-vous pour commencer à cuisiner'
-            }
-          </p>
+      <section className="k-card k-card--ghost">
+        <div className="k-card__head">
+          <div>
+            <p className="k-tag">Tokens suivis</p>
+            <h3 className="k-card__title">🔖 Mes tokens ({count}/4)</h3>
+          </div>
         </div>
-      ) : (
-        <div>
-          <h3 style={{ color: '#e5e7eb', fontSize: '18px', fontWeight: 'bold', marginBottom: '16px' }}>
-            🔖 Mes Tokens Suivis ({count}/4)
-          </h3>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-            {selectedTokens.map(symbolWithSource => {
-              const [symbol, source] = symbolWithSource.includes(':') 
-                ? symbolWithSource.split(':') 
+        {selectedTokens.length === 0 ? (
+          <div className="k-empty">
+            {user
+              ? 'Glisse des tokens depuis “Épicerie fine” pour les suivre ici.'
+              : 'Connecte-toi pour commencer à cuisiner.'}
+          </div>
+        ) : (
+          <div className="k-token-grid">
+            {selectedTokens.map((symbolWithSource) => {
+              const [symbol, source] = symbolWithSource.includes(':')
+                ? symbolWithSource.split(':')
                 : [symbolWithSource, 'hyperliquid']
-              
+
               return (
-                <div key={symbolWithSource} style={{ position: 'relative' }}>
+                <div key={symbolWithSource} className="k-token-wrapper">
                   <TokenTile symbol={symbol} source={source} />
-                  <DeleteButton 
+                  <DeleteButton
                     symbol={symbol}
                     onRemove={() => removeToken(symbolWithSource)}
                     isMobile={isMobile}
@@ -4500,8 +3648,8 @@ export default function Page2() {
               )
             })}
           </div>
-        </div>
-      )}
+        )}
+      </section>
 
       {renderBinanceSpotControls()}
     </div>
