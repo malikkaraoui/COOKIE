@@ -1,3 +1,86 @@
+.marmite-vote-section {
+  width: min(900px, 100%);
+  margin: 0 auto 32px;
+}
+
+.marmite-performance-card {
+  width: min(1050px, 100%);
+  margin: 0 auto 32px;
+  padding: clamp(24px, 4vw, 36px);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.marmite-performance-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+}
+
+.marmite-performance-card__header h3 {
+  margin: 4px 0 0;
+  font-size: 1.6rem;
+  color: #0f172a;
+}
+
+.marmite-performance-subtitle {
+  margin: 6px 0 0;
+  color: #475569;
+  font-size: 0.95rem;
+  max-width: 460px;
+}
+
+.marmite-performance-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  font-weight: 600;
+}
+
+.marmite-performance-chart {
+  width: 100%;
+  height: 260px;
+}
+
+.marmite-performance-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #475569;
+  font-size: 0.95rem;
+}
+
+.marmite-performance-legend .legend-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #16a34a;
+}
+
+.marmite-performance-tooltip {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #0f172a;
+  font-size: 0.9rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+}
+
+.marmite-performance-tooltip span {
+  display: block;
+  margin-top: 4px;
+  color: #15803d;
+}
 .marmite-page {
   min-height: calc(100vh - var(--cookie-topbar-height, 0px));
   padding: 80px clamp(16px, 5vw, 72px) 120px;
@@ -57,6 +140,177 @@
   margin-top: 8px;
 }
 
+.marmite-info-grid {
+  margin: 32px auto 0;
+  width: min(1100px, 100%);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.marmite-info-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 22px;
+  border: 1px solid rgba(15, 23, 42, 0.04);
+  padding: clamp(22px, 4vw, 30px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 100%;
+}
+
+.marmite-info-card__title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.marmite-info-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1;
+}
+
+.marmite-info-list li {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.marmite-info-list__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.marmite-info-list strong {
+  display: block;
+  font-size: 1rem;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.marmite-info-list p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.marmite-info-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.marmite-info-card__tags span {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  color: #475569;
+  font-weight: 600;
+}
+
+.marmite-info-card--steps {
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.marmite-how-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.marmite-how-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.marmite-how-step__index {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.marmite-how-steps strong {
+  display: block;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.marmite-how-steps p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.marmite-reward-card {
+  border-radius: 20px;
+  border: 1px dashed rgba(249, 115, 22, 0.3);
+  background: rgba(255, 247, 237, 0.65);
+  padding: 16px;
+}
+
+.marmite-reward-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.marmite-reward-card ul {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.marmite-reward-card li {
+  flex: 1 1 120px;
+  min-width: 120px;
+  border-radius: 16px;
+  background: #fff;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.marmite-reward-card li strong {
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.marmite-reward-card li span {
+  font-size: 0.85rem;
+  color: #475569;
+}
+
 .marmite-pill {
   padding: 10px 18px;
   border-radius: 999px;
@@ -83,50 +337,18 @@
   color: #b45309;
 }
 
-.marmite-body {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 32px;
-  justify-content: center;
-  align-items: stretch;
-}
-
-.marmite-illustration-card {
-  flex: 1 1 320px;
-  min-height: 360px;
-  background: linear-gradient(180deg, rgba(255, 247, 230, 0.95), rgba(255, 231, 200, 0.95));
-  border-radius: 32px;
-  border: 1px solid rgba(255, 183, 77, 0.35);
-  box-shadow: 0 25px 70px rgba(255, 176, 66, 0.25);
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  padding: 40px;
-  gap: 20px;
-}
-
-.marmite-illustration-icon {
-  font-size: clamp(5rem, 12vw, 10rem);
-  filter: drop-shadow(0 25px 40px rgba(255, 138, 0, 0.35));
-  animation: marmiteFloat 4s ease-in-out infinite;
-}
-
-.marmite-illustration-card p {
-  color: #8c5a14;
-  font-size: 1rem;
-  line-height: 1.5;
-  margin: 0;
+.marmite-vote-section {
+  width: min(900px, 100%);
+  margin: 0 auto 32px;
 }
 
 .marmite-vote-card {
-  flex: 1 1 420px;
+  width: 100%;
   background: #ffffff;
-  border-radius: 32px;
+  border-radius: 24px;
   padding: clamp(24px, 4vw, 40px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 25px 70px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.05);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -339,6 +561,25 @@
 @media (max-width: 768px) {
   .marmite-page {
     padding: 48px 20px 80px;
+  }
+
+  .marmite-vote-section,
+  .marmite-performance-card,
+  .marmite-info-grid {
+    width: 100%;
+  }
+
+  .marmite-performance-card__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .marmite-performance-chart {
+    height: 220px;
+  }
+
+  .marmite-info-card {
+    padding: 24px;
   }
 
   .marmite-card__header {
